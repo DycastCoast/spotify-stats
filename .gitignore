@@ -1,0 +1,33 @@
+# Secrets
+.env
+
+# Spotipy's default token cache (we don't use it, but just in case)
+.cache
+.cache-*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Databases and Spotify data exports (personal data, keep out of Git)
+*.db
+*.sqlite
+data/
+
+# Snapshots contain people's listening data: never commit them
+snapshot/
+snapshot-*.zip
+
+# Uploaded exports are deleted straight after importing, but never commit them
+uploads/
+
+# Spotify exports and other zips: personal data, never commit
+*.zip
+
+# Kubernetes secret before sealing: never commit
+k8s/secret.yaml

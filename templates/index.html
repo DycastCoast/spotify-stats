@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="landing">
+  <div class="landing-copy">
+    <span class="hero-kicker">Listening Stats</span>
+    <h1>Your listening,<br><span class="accent">in detail.</span></h1>
+    <p>Your Spotify history turned into the stats Wrapped never shows you:
+      your daily rhythm, the songs you loop, the artists that found you, and what you were playing on this day years ago.</p>
+    <a class="button" href="{{ url_for('login') }}">Log in with Spotify</a>
+    <p class="small">Read-only access. This site can't change your playlists, library or account.</p>
+  </div>
+
+  <!-- An illustration of the kind of thing inside: a day's rhythm line. Decorative, not real data. -->
+  <svg class="landing-art" viewBox="0 0 420 240" aria-hidden="true">
+    <defs>
+      <linearGradient id="land-grad" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#3987e5"/><stop offset="0.5" stop-color="#8f8d86"/><stop offset="1" stop-color="#e66767"/>
+      </linearGradient>
+    </defs>
+    <path d="M10 70 C 50 60, 70 120, 110 170 S 170 205, 210 180 S 260 120, 300 95 S 370 60, 410 70"
+          fill="none" stroke="url(#land-grad)" stroke-width="4" stroke-linecap="round" class="land-line"/>
+    <line x1="10" x2="410" y1="130" y2="130" stroke="#c3c2b7" stroke-dasharray="4 5" opacity="0.4"/>
+  </svg>
+</section>
+
+<section class="features">
+  <div class="feature">
+    <h3>When you listen</h3>
+    <p>Your average day, hour by hour, against your own normal. Weekdays vs weekends, and every day of the year.</p>
+  </div>
+  <div class="feature">
+    <h3>What you love</h3>
+    <p>Every song and artist gets its own page: first listen, biggest day, longest loop, and the comeback.</p>
+  </div>
+  <div class="feature">
+    <h3>How you listen</h3>
+    <p>What you put on yourself vs what comes on by itself, how fast you skip, and the songs you never do.</p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+  const line = document.querySelector(".land-line");
+  if (line) motion.drawLine(line, 1600);
+</script>{% endblock %}

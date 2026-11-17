@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Import your history · Listening Stats{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Import your history</h1></div>
+
+{% if removed is defined %}
+  <div class="card notice good">Removed {{ '{:,}'.format(removed) }} imported plays from your history. Plays the site tracked live are still there.</div>
+{% endif %}
+{% if error %}<div class="card notice bad" role="alert"><b>Not imported.</b> {{ error }}</div>{% endif %}
+{% if result %}
+  <div class="card notice good" role="status">
+    <b>Done.</b> {{ '{:,}'.format(result.new) }} new plays added, covering {{ result.first[:10] }} to {{ result.last[:10] }}
+    {% if result.music - result.new %}({{ '{:,}'.format(result.music - result.new) }} were already here){% endif %}.
+    {% if result.private %}{{ '{:,}'.format(result.private) }} private-session plays were left out.{% endif %}
+    Your pages will take a few seconds the first time while they catch up.
+  </div>
+{% endif %}
+
+<div class="two-col import-cols">
+  <section class="card">
+    <div class="card-head"><h2>1. Get your data from Spotify</h2></div>
+    <ol class="steps">
+      <li>On spotify.com, go to <b>Account → Privacy settings</b> (or "Account privacy").</li>
+      <li>Under <b>Download your data</b>, tick <b>Extended streaming history</b> (not just "Account data", which only has the last year) and request it.</li>
+      <li>Confirm the email Spotify sends. The download usually arrives <b>within a few days, at most 30</b>.</li>
+      <li>Download <b>my_spotify_data.zip</b> from their email. Don't unzip it.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>2. Upload it here</h2>
+      <p class="small">Up to {{ max_mb }} MB. It only ever goes into <b>your</b> history, the upload is deleted straight after,
+        and IP addresses and private-session plays are never stored. Uploading a newer export later only adds what's new.</p></div>
+    {% if need_confirm %}
+      <div class="notice warn">That export covers <b>{{ need_confirm.first }} to {{ need_confirm.last }}</b> ({{ '{:,}'.format(need_confirm.music) }} plays),
+        but the site has nothing of yours from those dates to check it against. Every export is called my_spotify_data.zip,
+        so please make sure it's yours, tick the box, and upload it again.</div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" class="upload-form" id="upload-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="file" name="export" accept=".zip,application/zip" required>
+      {% if need_confirm %}
+        <label class="tick"><input type="checkbox" name="mine" value="1" required> This is my own Spotify data</label>
+      {% endif %}
+      <button type="submit" class="button">Import</button>
+      <p class="small upload-wait" hidden>Uploading and importing… this can take up to a minute. Don't close the page.</p>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>What's stored for you</h2></div>
+  <ul class="stored">
+    <li><b>From exports:</b> {% if mine.export %}{{ '{:,}'.format(mine.export.n) }} plays, {{ mine.export.first }} to {{ mine.export.last }}{% else %}nothing yet{% endif %}</li>
+    <li><b>Tracked live by the site:</b> {% if mine.api %}{{ '{:,}'.format(mine.api.n) }} plays, {{ mine.api.first }} to {{ mine.api.last }}{% else %}nothing yet{% endif %}</li>
+  </ul>
+  {% if mine.export %}
+  <details class="danger-zone">
+    <summary>Remove my imported history</summary>
+    <form method="post" action="{{ url_for('import_delete') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <p class="small">Deletes all {{ '{:,}'.format(mine.export.n) }} plays you imported from exports. Plays the site tracked live stay.
+        You can import again any time.</p>
+      <label class="tick"><input type="checkbox" name="sure" value="1" required> Yes, remove them</label>
+      <button type="submit" class="button danger">Remove</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Imports take a while: say so, and stop a second click from starting another one.
+  const form = document.getElementById("upload-form");
+  if (form) form.addEventListener("submit", () => {
+    form.querySelector(".upload-wait").hidden = false;
+    form.querySelector("button[type=submit]").disabled = true;
+  });
+</script>
+{% endblock %}

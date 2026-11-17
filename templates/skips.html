@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Skips · Listening Stats{% endblock %}
+{% block content %}
+{% set you = whose[0] == "Your" %}
+{% set W = whose[1] %}
+
+<form class="filters" method="get">
+  <h1>Skips</h1>
+  <label>
+    <span>Person</span>
+    <select name="who" onchange="this.form.submit()">
+      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if p.id == who }}>{{ p.display_name }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+
+{% macro rate_chart(c, label) %}
+{% if c %}
+<svg class="ratechart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ label }}">
+  {% for v, ty in c.y_ticks %}
+    <line class="grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+    <text class="tick" x="{{ c.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ v }}%</text>
+  {% endfor %}
+  {% for b in c.bars %}
+    <rect class="bar {{ 'above' if b.above }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3"/>
+    {% if b.label %}<text class="tick" x="{{ b.cx }}" y="{{ c.h - 8 }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
+  {% endfor %}
+  <line class="overall" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.overall_y }}" y2="{{ c.overall_y }}"/>
+  {% for b in c.bars %}<rect class="hover-col" x="{{ b.slot_x }}" y="0" width="{{ c.slot }}" height="{{ c.bottom }}" data-tip="{{ b.tip }}"/>{% endfor %}
+</svg>
+{% endif %}
+{% endmacro %}
+
+<!-- Headline -->
+<section class="hero-stat">
+  <div class="hero-text">
+    <span class="hero-kicker">{{ whose[0] }} skip rate · {{ '{:,}'.format(k.known) }} songs from the export</span>
+    <div class="hero-main">
+      <span class="hero-number" data-count>{{ '%.0f' % k.overall }}%</span>
+      <span class="hero-unit">of songs get skipped</span>
+    </div>
+    <span class="hero-compare">
+      {% if k.lowest and k.highest and k.highest.year > k.lowest.year %}Up from {{ '%.0f' % k.lowest.rate }}% in {{ k.lowest.year }} to {{ '%.0f' % k.last_year.rate }}% in {{ k.last_year.year }}.
+      {% elif k.lowest and k.highest %}Down from {{ '%.0f' % k.highest.rate }}% in {{ k.highest.year }} to {{ '%.0f' % k.last_year.rate }}% in {{ k.last_year.year }}.{% endif %}
+      {% for o in others %}{{ o.name | capitalize }}: {{ '%.0f' % o.rate }}%.{% endfor %}
+    </span>
+  </div>
+</section>
+
+<!-- Habits -->
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>When {{ 'you' if you else 'they' }} skip</h2>
+      <p class="small">Share of songs skipped. Brighter bars are above {{ W }} overall rate (the dashed line).</p>
+    </div>
+    <div class="seg-toggle" role="group" aria-label="By" data-part="0">
+      <button type="button" data-value="year" class="active">By year</button>
+      <button type="button" data-value="hour">By hour</button>
+      <button type="button" data-value="day">By day</button>
+    </div>
+  </div>
+  <div data-key="year">{{ rate_chart(k.year_chart, "Skip rate by year") }}
+    {% if k.lowest %}<p class="small note">Lowest: {{ k.lowest.year }} ({{ '%.0f' % k.lowest.rate }}%). Highest: {{ k.highest.year }} ({{ '%.0f' % k.highest.rate }}%).</p>{% endif %}</div>
+  <div data-key="hour" hidden>{{ rate_chart(k.hour_chart, "Skip rate by hour of day") }}</div>
+  <div data-key="day" hidden>{{ rate_chart(k.day_chart, "Skip rate by day of the week") }}</div>
+  <div class="two-col habit-meters">
+    <div>
+      <h3 class="list-title">By how the song started</h3>
+      <ul class="meters">
+        {% for s in k.starts %}<li data-tip="{{ s.label }}: {{ s.rate }}% of {{ '{:,}'.format(s.seen) }} songs skipped">
+          <span class="meter-name">{{ s.label }}</span><span class="meter-bar compare"><span style="width: {{ s.rate }}%"></span><i style="left: {{ k.overall }}%"></i></span><span class="meter-fig">{{ s.rate }}%</span></li>{% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h3 class="list-title">Shuffle</h3>
+      <ul class="meters">
+        {% for s in k.shuffle %}<li data-tip="{{ s.label }}: {{ s.rate }}% of {{ '{:,}'.format(s.seen) }} songs skipped">
+          <span class="meter-name">{{ s.label }}</span><span class="meter-bar compare"><span style="width: {{ s.rate }}%"></span><i style="left: {{ k.overall }}%"></i></span><span class="meter-fig">{{ s.rate }}%</span></li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+  <p class="small note"><span class="usual-key"></span> = {{ W }} overall skip rate ({{ '%.0f' % k.overall }}%)</p>
+</section>
+
+<!-- Instant vs late -->
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Instant or late?</h2>
+      <p class="small"><b>{{ k.instant_share }}%</b> of {{ W }} skips happen in the first 10 seconds: {{ 'you' if you else 'they' }} know almost straight away.
+        Only {{ k.late_share }}% come after a minute or more ({{ 'you' if you else 'they' }} gave it a go, then got bored).</p>
+    </div>
+  </div>
+  <ul class="buckets">
+    {% for b in k.buckets %}
+      <li data-tip="{{ '{:,}'.format(b.n) }} skips {{ b.label }} into the song ({{ '%.0f' % b.pct }}%)">
+        <span class="meter-name">{{ b.label }}</span>
+        <span class="meter-bar"><span style="width: {{ b.bar }}%"></span></span>
+        <span class="meter-fig">{{ '%.0f' % b.pct }}%</span>
+      </li>
+    {% endfor %}
+  </ul>
+  <div class="card-head card-head-row sub-head">
+    <h3 class="list-title">Songs {{ 'you' if you else 'they' }}…</h3>
+    <div class="seg-toggle" role="group" aria-label="Which songs" data-part="1">
+      <button type="button" data-value="instant" class="active">Skip instantly</button>
+      <button type="button" data-value="late">Get bored of</button>
+    </div>
+  </div>
+  {% for key, rows, what in (("instant", k.instant_songs, "within 10 s"), ("late", k.late_songs, "after a minute+")) %}
+  <div data-key="{{ key }}" {{ 'hidden' if key == 'late' }}>
+    <div class="more-wrap">
+      <ol class="ranked">
+        {% for s in rows %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}"><span class="rank-num">{{ loop.index }}</span>
+            <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a><span class="rank-artist">{{ s.artist }}</span></span>
+            <span class="rank-fig" data-tip="Skipped {{ what }} {{ s.n }} of the {{ s.of }} times it came up">{{ s.n }} of {{ s.of }}</span></li>
+        {% else %}<p class="empty small">None often enough to list.</p>{% endfor %}
+      </ol>
+      {% if rows | length > 5 %}<button type="button" class="more-btn">Show {{ rows | length }}</button>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<!-- Burnout -->
+<section class="card">
+  <div class="card-head">
+    <h2>Burnout</h2>
+    <p class="small">Across the {{ '{:,}'.format(k.heavy) }} songs {{ 'you' if you else 'they' }}'ve come across 60+ times, how often each gets skipped, by how many times it's come up.
+      {% if k.burn_curve %}New favourites get skipped {{ '%.0f' % k.burn_curve[0].rate }}% of the time{% if k.tipping %}; by play {{ k.tipping }} it's about {{ '%.0f' % (k.burn_curve | map(attribute='rate') | max) }}%{% endif %}.{% endif %}</p>
+  </div>
+  {{ rate_chart(k.curve_chart, "Skip rate by how many times a song has come up") }}
+  <p class="small note">Bars = plays 1–10, 11–20, and so on. Dashed line = {{ W }} overall rate.</p>
+  {% if k.burnout %}
+  <h3 class="list-title">Burnt out on</h3>
+  <p class="small">Songs that were hardly ever skipped for a long time and are now skipped most of the time ({{ k.burnout_count }} in all).</p>
+  <div class="more-wrap">
+    <ol class="ranked burn-list">
+      {% for b in k.burnout %}
+        <li class="has-art {{ 'extra' if loop.index > 5 }}"><span class="rank-num">{{ loop.index }}</span>
+          <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ b.track }}">
+          <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=b.track, who=who) }}">{{ b.name }}</a>
+            <span class="rank-artist">{{ b.artist }} · loved from {{ b.loved_from }}: {{ b.loved_plays }} plays, {{ b.loved_rate }}% skipped</span></span>
+          <span class="burn-now" data-tip="Since {{ b.turned }}: skipped {{ b.now_rate }}% of the last 15 times">since {{ b.turned }}<b>{{ b.now_rate }}% skipped</b></span></li>
+      {% endfor %}
+    </ol>
+    {% if k.burnout | length > 5 %}<button type="button" class="more-btn">Show {{ k.burnout | length }}</button>{% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- Streaks -->
+{% set s = k.streaks %}
+{% if s %}
+<section class="card">
+  <div class="card-head">
+    <h2>Skip streaks</h2>
+    <p class="small">5+ skips in a row: hunting for the right song.</p>
+  </div>
+  <section class="tiles">
+    <div class="tile"><span class="tile-label">Streaks</span><span class="tile-value" data-count>{{ '{:,}'.format(s.count) }}</span></div>
+    <div class="tile"><span class="tile-label">Typical length</span><span class="tile-value">{{ s.median }} skips</span></div>
+    <div class="tile"><span class="tile-label">Longest</span><span class="tile-value" data-count>{{ s.longest.n }}</span></div>
+    <div class="tile"><span class="tile-label">Most streaks in</span><span class="tile-value">{{ s.busiest_year.year }}</span></div>
+  </section>
+  <p class="story-text">The longest: <b>{{ s.longest.n }} skips in {{ s.longest.minutes }} minutes</b>, on {{ s.longest.date }} at {{ s.longest.time }}.
+    Streaks are most likely around <b>{{ '%02d' % s.peak_hour }}:00</b>, and {{ s.stopped_share }}% of them ended with a song {{ 'you' if you else 'they' }} actually listened to.</p>
+  <h3 class="list-title">What finally stopped {{ 'you' if you else 'them' }}</h3>
+  {% if s.stopper_artist %}<p class="small">{{ s.stopper_artist[0] }} ended {{ s.stopper_artist[1] }} streaks, more than anyone else.</p>{% endif %}
+  <ol class="ranked compact">
+    {% for x in s.stoppers[:5] %}
+      <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+        <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ x.track }}">
+        <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=x.track, who=who) }}">{{ x.name }}</a><span class="rank-artist">{{ x.artist }}</span></span>
+        <span class="rank-fig">{{ x.n }}×</span></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+<script>document.querySelectorAll(".hero-number[data-count]").forEach(el => motion.countUp(el));</script>
+{% endblock %}

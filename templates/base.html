@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Listening Stats{% endblock %}</title>
+
+  <!-- Decide on motion BEFORE the page draws, so nothing animates and then stops.
+       Your saved choice wins; otherwise follow the computer's "reduce motion" setting. -->
+  <script>
+    (() => {
+      let saved = null;
+      try { saved = localStorage.getItem("motion"); } catch (e) {}   // storage can be blocked
+      const reduce = saved ? saved === "off" : matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) document.documentElement.classList.add("reduce-motion");
+    })();
+  </script>
+
+  <!-- Fonts: Bricolage Grotesque for headings and big numbers, Figtree for everything else.
+       Loaded from Google Fonts for now; they can be downloaded into static/ later so the
+       site makes no outside requests. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400..700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=style_version) }}">
+  {% if page_theme %}
+  <!-- This page's colour, picked from the top song's cover -->
+  <style>:root { --accent: {{ page_theme.hex }}; --accent-rgb: {{ page_theme.rgb }}; }</style>
+  {% endif %}
+</head>
+<body>
+  <!-- Loading bar: some pages take a few seconds to calculate the first time, so give
+       instant feedback the moment you click, instead of a page that seems frozen. -->
+  <div id="nav-progress" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="brand-dot"></span> Listening Stats
+    </a>
+    {% if user %}
+      {# The pages, grouped. Each group is a <details> menu: it opens and closes without
+         any script, works with the keyboard, and the script below just closes the others. #}
+      {% set groups = [
+        ("You", [("now_page", "Right now", "What you're into lately"),
+                 ("overview", "Overview", "Totals, top lists, when and how you listen"),
+                 ("journey_page", "Journey", "Your eras and how your taste changed"),
+                 ("skips_page", "Skips", "What you skip, when, and burnout"),
+                 ("on_this_day", "On this day", "Today in earlier years"),
+                 ("trips_page", "Trips", "Your listening abroad (only you can see it)")]),
+        ("Friends", [("compare_page", "Compare", "You vs a friend: overlap, Jams, who found who")]),
+        ("Spotify", [("top", "Top", "Spotify's own ranking of your top artists and songs"),
+                     ("recent", "Recent", "Your latest plays, live from Spotify"),
+                     ("import_page", "Import your history", "Upload your full Spotify history export")]),
+      ] %}
+      <nav class="navgroups" aria-label="Pages">
+        {% for title, pages in groups %}
+          {% set current = pages | selectattr(0, "equalto", request.endpoint) | list %}
+          <details class="navgroup {{ 'active' if current }}">
+            <summary>{{ title }}{% if current %}<span class="nav-current"> · {{ current[0][1] }}</span>{% endif %}</summary>
+            <div class="navpanel">
+              {% for endpoint, label, about in pages %}
+                <a href="{{ url_for(endpoint) }}" class="{{ 'active' if request.endpoint == endpoint }}">
+                  <b>{{ label }}</b><small>{{ about }}</small></a>
+              {% endfor %}
+            </div>
+          </details>
+        {% endfor %}
+      </nav>
+      <form class="search" action="{{ url_for('search') }}" method="get" role="search" autocomplete="off">
+        {% if who %}<input type="hidden" name="who" value="{{ who }}">{% endif %}
+        <input type="search" name="q" id="search-box" placeholder="Search songs, artists, albums"
+               value="{{ query or '' }}" aria-label="Search songs, artists and albums" aria-controls="search-results">
+        <div class="search-results" id="search-results" role="listbox" hidden></div>
+      </form>
+      <div class="user">
+        {# What you're playing right now: filled in by the script below, hidden until there's a song. #}
+        <a class="np-pill" id="np-pill" href="{{ url_for('now_page') }}#playing" hidden>
+          <span class="np-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="np-text"></span>
+        </a>
+        <button type="button" class="motion-toggle" id="motion-toggle" aria-pressed="false"
+                title="Turn animations on or off">Animations: on</button>
+        {% if user.images %}<img src="{{ user.images | image }}" alt="">{% endif %}
+        <span>{{ user.display_name }}</span>
+        <a class="logout" href="{{ url_for('logout') }}">Log out</a>
+      </div>
+    {% endif %}
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- One shared tooltip: anything with a data-tip attribute shows it on hover -->
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <script>
+    (() => {
+      const tip = document.getElementById("tip");
+      document.addEventListener("mouseover", e => {
+        const el = e.target.closest("[data-tip]");
+        if (!el) { tip.hidden = true; return; }
+        tip.textContent = el.dataset.tip;
+        tip.hidden = false;
+      });
+      document.addEventListener("mousemove", e => {
+        tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + "px";
+        tip.style.top = (e.clientY + 16) + "px";
+      });
+
+      // --- The animations switch: remembered in this browser.
+      const root = document.documentElement, btn = document.getElementById("motion-toggle");
+      const show = () => {
+        const off = root.classList.contains("reduce-motion");
+        if (btn) { btn.textContent = `Animations: ${off ? "off" : "on"}`; btn.setAttribute("aria-pressed", off); }
+      };
+      if (btn) btn.addEventListener("click", () => {
+        root.classList.toggle("reduce-motion");
+        try { localStorage.setItem("motion", root.classList.contains("reduce-motion") ? "off" : "on"); } catch (e) {}
+        show();
+      });
+      show();
+    })();
+
+    // --- Shared motion helpers, used by pages. All of them do nothing when motion is off.
+    window.motion = {
+      off: () => document.documentElement.classList.contains("reduce-motion"),
+
+      // Count a number up from 0, keeping its formatting ("1,263", "50%", "160 days in a row").
+      countUp(el, ms = 900) {
+        const m = el.textContent.trim().match(/^([\d,]+(?:\.\d+)?)(.*)$/s);
+        if (!m || this.off()) return;
+        const target = parseFloat(m[1].replace(/,/g, "")), decimals = (m[1].split(".")[1] || "").length;
+        const rest = m[2], t0 = performance.now();
+        const fmt = v => v.toLocaleString("en-GB", {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+        const step = now => {
+          const p = Math.min(1, (now - t0) / ms), eased = 1 - Math.pow(1 - p, 3);   // fast, then settles
+          el.textContent = fmt(target * eased) + rest;
+          if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      },
+
+      // Draw an SVG line from start to end.
+      drawLine(path, ms = 1200) {
+        if (this.off() || !path.getTotalLength) return;
+        const len = path.getTotalLength();
+        path.style.transition = "none";
+        path.style.strokeDasharray = len;
+        path.style.strokeDashoffset = len;
+        path.getBoundingClientRect();                          // apply the start position first
+        path.style.transition = `stroke-dashoffset ${ms}ms cubic-bezier(.3,.7,.2,1)`;
+        path.style.strokeDashoffset = 0;
+      },
+
+      // Fade things in one after another as they scroll into view.
+      reveal(selector, root = document) {
+        const items = [...root.querySelectorAll(selector)];
+        if (this.off() || !("IntersectionObserver" in window)) return;
+        items.forEach((el, i) => { el.classList.add("pre-reveal"); el.style.setProperty("--delay", `${Math.min(i, 6) * 60}ms`); });
+        const io = new IntersectionObserver(entries => entries.forEach(e => {
+          if (!e.isIntersecting) return;
+          e.target.classList.add("revealed");
+          io.unobserve(e.target);
+        }), {threshold: 0.08});
+        items.forEach(el => io.observe(el));
+      },
+    };
+  </script>
+  <script>
+    // --- Pictures and colour, for any page. Pictures are asked for (from /art) only
+    // when they scroll into view, at most 3 at a time; the server saves every answer.
+    window.art = (() => {
+      const queue = [];
+      let running = 0;
+      const pump = () => {
+        while (running < 3 && queue.length) {
+          const job = queue.shift();
+          running++;
+          // In a snapshot (a saved copy with no server behind it) the pictures are built in.
+          (window.SNAPSHOT ? Promise.resolve(SNAPSHOT.art(job.kind, job.track))
+                           : fetch(`/art?kind=${job.kind}&track=${job.track}`).then(r => r.ok ? r.json() : null).catch(() => null))
+            .then(result => { running--; job.resolve(result); pump(); });
+        }
+      };
+      const load = (kind, track) => new Promise(resolve => {
+        if (String(track).startsWith("am-")) return resolve(null);     // Apple Music song: no Spotify cover to look up
+        queue.push({kind, track, resolve}); pump();
+      });
+
+      const observer = "IntersectionObserver" in window ? new IntersectionObserver(entries => entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        observer.unobserve(img);
+        load(img.dataset.artKind, img.dataset.artTrack).then(result => {
+          if (result && result.image_url) { img.src = result.image_url; img.classList.add("loaded"); }
+          else img.classList.add("missing");
+        });
+      }), {rootMargin: "200px"}) : null;
+      const lazy = (root = document) => root.querySelectorAll("img[data-art-track]:not([src])")
+        .forEach(img => observer && observer.observe(img));
+
+      // The page's main picture (#hero-cover) sets the page colour, if not already known.
+      const hero = () => {
+        const cover = document.getElementById("hero-cover");
+        if (!cover || cover.querySelector("img").getAttribute("src")) return;
+        load(cover.dataset.artKind, cover.dataset.artTrack).then(result => {
+          if (!result) return;
+          if (result.image_url) cover.querySelector("img").src = result.image_url;
+          if (!result.colour_hex) return;
+          const root = document.documentElement.style;
+          root.setProperty("--accent", result.colour_hex);          // CSS transitions fade it in
+          root.setProperty("--accent-rgb", result.colour_rgb);
+          document.querySelectorAll(".hero-stat, .entity-hero").forEach(el => el.classList.add("themed"));
+          const words = document.getElementById("colour-words");
+          if (words) {
+            words.textContent = `${words.dataset.prefix} ${result.colour_name}`;
+            document.getElementById("cover-colour").hidden = false;
+          }
+        });
+      };
+      return {load, lazy, hero};
+    })();
+
+    // --- Search as you type (results drop down under the box)
+    (() => {
+      const box = document.getElementById("search-box"), list = document.getElementById("search-results");
+      if (!box) return;
+      const who = box.form.querySelector("[name=who]");
+      const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+      let timer, latest = 0;
+      box.addEventListener("input", () => {
+        clearTimeout(timer);
+        const q = box.value.trim();
+        if (q.length < 2) { list.hidden = true; return; }
+        timer = setTimeout(() => {                 // wait until typing pauses, so we don't search every key
+          const ask = ++latest;
+          const params = new URLSearchParams({q, format: "json"});
+          if (who) params.set("who", who.value);
+          (window.SNAPSHOT ? Promise.resolve(SNAPSHOT.search(q, who && who.value))
+                           : fetch(`/search?${params}`).then(r => r.json())).then(res => {
+            if (ask !== latest) return;            // an older search finished late: ignore it
+            const w = who ? `&who=${encodeURIComponent(who.value)}` : "";
+            const go = url => window.SNAPSHOT ? SNAPSHOT.link(url) : url;     // a snapshot maps links to its own files
+            const songUrl = track => go(`/song/${track}` + (who ? `?who=${encodeURIComponent(who.value)}` : ""));
+            const pic = (kind, track) => `<img class="sr-art ${kind === "artist" ? "round" : ""}" alt="" data-art-kind="${kind}" data-art-track="${esc(track)}">`;
+            const songs = res.songs.map(s => `<a role="option" href="${songUrl(s.track)}">${pic("track", s.track)}<span><b>${esc(s.name)}</b><small>Song · ${esc(s.artist)} · ${s.plays} plays</small></span></a>`);
+            const artists = res.artists.map(a => `<a role="option" href="${go(`/artist?name=${encodeURIComponent(a.name)}${w}`)}">${pic("artist", a.track)}<span><b>${esc(a.name)}</b><small>Artist · ${a.hours} h</small></span></a>`);
+            const albums = (res.albums || []).map(a => `<a role="option" href="${go(`/album?name=${encodeURIComponent(a.name)}&artist=${encodeURIComponent(a.artist)}${w}`)}">${pic("track", a.track)}<span><b>${esc(a.name)}</b><small>Album · ${esc(a.artist)} · ${a.hours} h</small></span></a>`);
+            list.innerHTML = [...artists, ...albums, ...songs].join("") || `<p class="sr-empty">Nothing found</p>`;
+            list.hidden = false;
+            art.lazy(list);                        // fetch the new pictures (saved ones come straight back)
+          });
+        }, 200);
+      });
+      document.addEventListener("click", e => { if (!box.form.contains(e.target)) list.hidden = true; });
+      box.addEventListener("keydown", e => { if (e.key === "Escape") { list.hidden = true; box.blur(); } });
+    })();
+
+    // Nav menus: only one open at a time; close on a click elsewhere or Escape.
+    document.querySelectorAll(".navgroup").forEach(d => d.addEventListener("toggle", () => {
+      if (d.open) document.querySelectorAll(".navgroup[open]").forEach(o => { if (o !== d) o.open = false; });
+    }));
+    document.addEventListener("click", e => {
+      if (!e.target.closest(".navgroup")) document.querySelectorAll(".navgroup[open]").forEach(o => o.open = false);
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") document.querySelectorAll(".navgroup[open]").forEach(o => { o.open = false; o.querySelector("summary").focus(); });
+    });
+
+    art.lazy();
+    art.hero();
+
+    // --- Listening right now. One poller per URL, shared by everything on the page that
+    // wants it (the top-bar pill and the Right now card both use "/api/playing", so they
+    // cost ONE request). It only asks while the tab is visible, asks again just after the
+    // song should end, and stops for good when there's nothing it can show (e.g. needs a
+    // re-login), so an open tab doesn't keep knocking on Spotify all night.
+    window.nowPlaying = (() => {
+      const pollers = {};
+      const STOP = ["relogin", "none", "private"];
+      function make(url) {
+        const p = { listeners: [], last: null, timer: null };
+        p.check = async () => {
+          clearTimeout(p.timer);
+          if (document.hidden) return;
+          let data;
+          try { data = await (await fetch(url, { headers: { "Accept": "application/json" } })).json(); }
+          catch { data = { state: "unknown" }; }
+          data.received = Date.now();
+          p.last = data;
+          p.listeners.forEach(f => f(data));
+          if (STOP.includes(data.state)) return;
+          let wait = data.state === "playing" ? 20000 : 30000;
+          if (data.state === "playing") wait = Math.min(wait, data.duration_ms - data.progress_ms + 1500);
+          p.timer = setTimeout(p.check, Math.max(wait, 3000));
+        };
+        document.addEventListener("visibilitychange", () => document.hidden ? clearTimeout(p.timer) : p.check());
+        return p;
+      }
+      return {
+        on(url, f) {
+          let p = pollers[url];
+          if (!p) { p = pollers[url] = make(url); setTimeout(p.check, 0); }
+          p.listeners.push(f);
+          if (p.last) f(p.last);
+        },
+      };
+    })();
+    {% if user %}
+    if (!window.SNAPSHOT) nowPlaying.on("/api/playing", d => {
+      const pill = document.getElementById("np-pill");
+      if (!pill) return;
+      const on = d.state === "playing" || d.state === "paused";
+      pill.hidden = !on;
+      if (!on) return;
+      pill.classList.toggle("paused", d.state === "paused");
+      pill.querySelector(".np-text").textContent = `${d.song} · ${d.artist}`;     // textContent: never run song names as HTML
+      pill.title = (d.state === "paused" ? "Paused: " : "Listening to ") + `${d.song} by ${d.artists}`;
+    });
+    {% endif %}
+
+    // --- Show the loading bar when leaving for another page of this site.
+    (() => {
+      const bar = document.getElementById("nav-progress");
+      const start = () => { bar.className = "loading"; document.body.classList.add("navigating"); };
+      document.addEventListener("click", e => {
+        const a = e.target.closest("a[href]");
+        if (!a || a.target === "_blank" || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+        const url = new URL(a.href, location.href);
+        if (url.origin !== location.origin || url.pathname.startsWith("/static/")) return;
+        if (url.pathname === location.pathname && url.search === location.search) return;   // same page / #anchor
+        start();
+      });
+      document.addEventListener("submit", start);
+      // Coming back with the browser's Back button can restore the old page as it was: reset.
+      window.addEventListener("pageshow", () => { bar.className = ""; document.body.classList.remove("navigating"); });
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

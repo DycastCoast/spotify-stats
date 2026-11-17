@@ -1,0 +1,106 @@
+{# Building blocks shared by the song and artist pages. Use with:
+   {% import "macros.html" as m %} then {{ m.history(chart) }} etc. #}
+
+{# Plays per month as bars. One series, so one colour: the page's own. Hover a bar for its month. #}
+{% macro history(c, title, subtitle) %}
+<section class="card">
+  <div class="card-head">
+    <h2>{{ title }}</h2>
+    <p class="small">{{ subtitle }} Peak: <b>{{ c.peak_label }}</b>, {{ c.peak_plays }} plays.</p>
+  </div>
+  <svg class="history" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ title }}: plays per month, peaking in {{ c.peak_label }}">
+    {% for value, ty in c.y_ticks %}
+      <line class="grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+      <text class="tick" x="{{ c.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ value }}</text>
+    {% endfor %}
+    {% for label, tx in c.x_ticks %}
+      <text class="tick" x="{{ tx }}" y="{{ c.h - 8 }}">{{ label }}</text>
+    {% endfor %}
+    {% for b in c.bars %}
+      <rect class="bar {{ 'peak' if b.peak }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="{{ 2 if b.w > 6 else 0 }}"/>
+    {% endfor %}
+    {# wide invisible columns, so even a thin month is easy to hover #}
+    {% for b in c.bars %}
+      <rect class="hover-col" x="{{ b.slot_x }}" y="0" width="{{ c.slot_w }}" height="{{ c.bottom }}" data-tip="{{ b.tip }}"/>
+    {% endfor %}
+  </svg>
+</section>
+{% endmacro %}
+
+{# Highlight cards: label, value, comparison. Cards whose value is empty are skipped. #}
+{% macro highlights(cards) %}
+  <section class="highlights">
+    {% for c in cards if c and c.value %}
+      <div class="highlight {{ 'has-art' if c.art }}">
+        {% if c.art %}
+          <img class="hl-art {{ 'round' if c.art.kind == 'artist' }}" alt="" data-art-kind="{{ c.art.kind }}" data-art-track="{{ c.art.track }}">
+        {% endif %}
+        <div class="hl-body">
+          <span class="hl-label">{{ c.label }}</span>
+          <span class="hl-value" {% if c.count %}data-count{% endif %}>{{ c.value }}</span>
+          <span class="hl-detail">{{ c.detail }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+{% endmacro %}
+
+{# Songs that link to their own page, with covers. #}
+{% macro songs(items, who, empty="Nothing yet.") %}
+  {% if items %}
+    <div class="more-wrap">
+      <ol class="ranked">
+        {% for s in items %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+            <span class="rank-text">
+              <a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>
+              {% if s.artist %}<span class="rank-artist">{{ s.artist }}</span>{% endif %}
+            </span>
+            <span class="rank-fig">{{ s.fig }}</span>
+            <span class="meter-bar rank-bar"><span style="width: {{ s.bar }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if items | length > 5 %}<button type="button" class="more-btn">Show {{ items | length }}</button>{% endif %}
+    </div>
+  {% else %}
+    <p class="empty small">{{ empty }}</p>
+  {% endif %}
+{% endmacro %}
+
+{# Time of day: this song/artist (bar) against your normal listening (tick mark). #}
+{% macro when(w, noun) %}
+<section class="card">
+  <div class="card-head">
+    <h2>When you play it</h2>
+    <p class="small">{% if w.band %}A <b>{{ w.band }}</b> {{ noun }}: {{ w.band_text }}.{% else %}Played {{ w.band_text }}.{% endif %}
+      At weekends: {{ w.weekend_text }}.</p>
+  </div>
+  <ul class="meters">
+    {% for b in w.bands %}
+      <li data-tip="{{ b.label }}: {{ b.pct }}% of this {{ noun }}'s listening, vs {{ b.usual }}% of all your listening">
+        <span class="meter-name">{{ b.label }}</span>
+        <span class="meter-bar compare"><span style="width: {{ b.pct }}%"></span><i style="left: {{ b.usual }}%"></i></span>
+        <span class="meter-fig">{{ b.pct }}%</span>
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="small note"><span class="usual-key"></span> = your usual share for that time of day</p>
+</section>
+{% endmacro %}
+
+{# Skips: this song/artist against your average. #}
+{% macro treatment(t, noun) %}
+<section class="card">
+  <div class="card-head"><h2>How you treat it</h2></div>
+  <div class="skip-stats">
+    <div><span class="big">{{ t.rate }}%</span><span class="small">skipped<br>(you average {{ t.usual }}%)</span></div>
+    {% if t.median_s is not none %}
+    <div><span class="big">{{ t.median_s }} s</span><span class="small">typical time before<br>skipping it</span></div>
+    {% endif %}
+  </div>
+  <p class="small note">In short: {{ t.verdict }}. Based on {{ t.appearances }} times it came up.</p>
+</section>
+{% endmacro %}

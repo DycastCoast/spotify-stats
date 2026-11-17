@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}On this day · Listening Stats{% endblock %}
+{% block content %}
+
+<div class="page-head day-head">
+  <div>
+    <span class="hero-kicker">On this day</span>
+    <h1>{{ label }}</h1>
+  </div>
+  <nav class="day-nav" aria-label="Change day">
+    <a href="{{ url_for('on_this_day', date=prev_day, who=who) }}" aria-label="Previous day">←</a>
+    {% if not is_today %}<a href="{{ url_for('on_this_day', who=who) }}">Today</a>{% endif %}
+    <a href="{{ url_for('on_this_day', date=next_day, who=who) }}" aria-label="Next day">→</a>
+  </nav>
+</div>
+
+{% if not years %}
+  <p class="empty">No listening on {{ label }} in any earlier year.</p>
+{% endif %}
+
+{% for y in years %}
+<section class="card memory">
+  <div class="card-head card-head-row">
+    <div>
+      <span class="memory-ago">{{ y.ago }} year{{ 's' if y.ago != 1 }} ago</span>
+      <h2>{{ y.date }}</h2>
+    </div>
+    <div class="memory-minutes">
+      <span class="big" data-count>{{ y.minutes }}</span><span class="small"> min</span>
+      {% if y.vs_typical %}
+        <span class="small memory-vs">{% if y.vs_typical >= 1.5 %}{{ '%.1f' % y.vs_typical }}× a typical day that year
+          {% elif y.vs_typical <= 0.6 %}a quiet day for {{ y.year }}{% else %}about a typical day for {{ y.year }}{% endif %}</span>
+      {% endif %}
+    </div>
+  </div>
+  {{ m.songs(y.songs, who) }}
+  {% if y.new %}
+    <div class="first-heard">
+      <span class="hl-label">First heard that day{% if y.new_count > y.new | length %} ({{ y.new_count }} songs, showing {{ y.new | length }}){% endif %}</span>
+      <div class="chips">
+        {% for s in y.new %}
+          <a class="chip" href="{{ url_for('song', track_id=s.track, who=who) }}">
+            <img alt="" data-art-kind="track" data-art-track="{{ s.track }}"><span><b>{{ s.name }}</b><small>{{ s.artist }}</small></span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% endblock %}
+
+{% block scripts %}{% include "_entity_scripts.html" %}{% endblock %}

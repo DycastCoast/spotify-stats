@@ -1,0 +1,8 @@
+flask>=3.0
+spotipy>=2.24
+python-dotenv>=1.0
+tzdata    # time zone database; Windows doesn't ship one, so zoneinfo needs this
+pillow    # reads album covers to pick the page colour
+requests  # downloads album covers (spotipy uses it too)
+numpy     # fast maths on tables of numbers (finding eras on the Journey page)
+gunicorn  # the production web server in the container (runs app.py with several threads)

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Journey · Listening Stats{% endblock %}
+{% block content %}
+{% set you = whose == "Your" %}
+{% set whose_l = "your" if you else whose %}
+{% set eras = j.eras %}
+{% set now = eras[-1] %}
+
+<!-- Page-wide filters: everything below follows them (the number of eras changes every card) -->
+<form class="filters" method="get">
+  <h1>Journey</h1>
+  <label>
+    <span>Person</span>
+    <select name="who" onchange="this.form.submit()">
+      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if p.id == who }}>{{ p.display_name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>
+    <span>Eras</span>
+    <select name="eras" onchange="this.form.submit()">
+      <option value="broad" {{ 'selected' if detail == 'broad' }}>Broad</option>
+      <option value="detailed" {{ 'selected' if detail == 'detailed' }}>Detailed</option>
+    </select>
+  </label>
+</form>
+
+<!-- Headline: the era you're in now -->
+<section class="hero-stat journey-hero {{ 'themed' if page_theme }}">
+  <div class="hero-text">
+    <span class="hero-kicker">{{ 'Right now you\'re in' if you else whose[:-2] ~ ' is in' }} · since {{ now.dates.split(' – ')[0] }}</span>
+    <div class="hero-main">
+      <span class="era-title {{ 'long' if now.name | length > 22 }}">{{ now.name }}</span>
+    </div>
+    <span class="hero-compare">
+      {{ whose }} {{ eras | length }}{{ {1: 'st', 2: 'nd', 3: 'rd'}.get(eras | length, 'th') }} era since {{ eras[0].dates.split(' – ')[0] }}.
+      {% if eras | length > 1 %}Before it: {{ eras[-2].name | replace('The ', 'the ', 1) }}, which lasted {{ eras[-2].length }}.{% endif %}
+    </span>
+  </div>
+  {% if now.lead_track %}
+  <figure class="hero-cover" id="hero-cover" data-art-kind="artist" data-art-track="{{ now.lead_track }}">
+    <div class="cover-frame round"><img alt="Photo of {{ now.lead }}"></div>
+  </figure>
+  {% endif %}
+</section>
+
+<!-- The whole history as one strip, each era as wide as it was long -->
+<nav class="era-strip" aria-label="Eras">
+  {% for s in j.strip %}
+    <a href="#era-{{ loop.index }}" class="{{ 'odd' if s.odd }} {{ 'now' if loop.last }}" style="flex: {{ s.flex }}" data-tip="{{ eras[loop.index0].name }} · {{ s.dates }}">
+      <span>{{ s.name }}</span>
+    </a>
+  {% endfor %}
+</nav>
+<p class="small strip-note">{{ j.range }} · how eras are found:
+  <button type="button" class="link-btn" data-show="#how-eras">explain</button></p>
+<div class="how-box" id="how-eras" hidden>
+  <p class="small">Each month gets a "mix": what share of it went on each artist. An era is a stretch of months whose mixes are
+    alike. Every possible way of cutting the history into {{ j.k }} stretches (each at least 4 months) is tried, and the one
+    where months fit their own stretch best wins. An era is named after the artist most <b>typical</b> of it: big in that era and
+    much smaller outside it, so not every era gets named after your all-time favourite.
+    "Broad" makes about one era per two years of history; "Detailed" nearly one a year.</p>
+</div>
+
+<!-- The eras, oldest first, with what changed in between -->
+<section class="eras">
+  {% for e in eras %}
+    {% if e.from_prev %}
+      {% set t = e.from_prev %}
+      <div class="era-change">
+        <span class="change-line" aria-hidden="true"></span>
+        <div>
+          <p class="change-text">{{ t.sentence }}</p>
+          <p class="small">{{ '%.0f' % t.similarity }}% the same as the era before{% if t.kept %} · stayed: {{ t.kept | join(', ') }}{% endif %}{% if t.pace %} · {{ t.pace }}{% endif %}</p>
+        </div>
+      </div>
+    {% endif %}
+    <article class="card era {{ 'now' if loop.last }}" id="era-{{ loop.index }}">
+      <div class="era-head">
+        {% if e.lead_track %}<img class="era-art" alt="" data-art-kind="artist" data-art-track="{{ e.lead_track }}">{% endif %}
+        <div>
+          <span class="hl-label">{{ e.dates }} · {{ e.length }}{% if loop.last %} so far{% endif %}</span>
+          <h2 class="era-name">{{ e.name }}</h2>
+          <p class="small">
+            {% if e.pace >= 1.3 %}A heavy stretch: {{ '%.1f' % e.pace }}× your usual listening per month
+            {% elif e.pace <= 0.7 %}A quieter stretch: {{ '%.1f' % e.pace }}× your usual listening per month
+            {% else %}About your usual amount of listening{% endif %} ({{ '{:,.0f}'.format(e.hours) }} h in all).
+          </p>
+        </div>
+      </div>
+      <span class="defining-label">Defined by <span class="small">· share of this era vs the rest of {{ whose_l }} history</span></span>
+      <ul class="defining">
+        {% for d in e.defining %}
+          <li data-tip="{{ d.name }}: {{ d.here | pct }} of this era, {{ d.elsewhere | pct }} of the rest of {{ whose_l }} history">
+            {% if d.track %}<img alt="" class="chip-art" data-art-kind="artist" data-art-track="{{ d.track }}">{% endif %}
+            <a href="{{ url_for('artist_page', name=d.name, who=who) }}">{{ d.name }}</a>
+            <span class="chip-fig">{{ d.here | pct }}<span class="chip-vs"> vs {{ d.elsewhere | pct }}</span></span>
+          </li>
+        {% endfor %}
+      </ul>
+      <details class="era-more">
+        <summary>More about this era</summary>
+        <div class="era-grid">
+          <div>
+            <h3 class="list-title">Biggest artists</h3>
+            <ol class="ranked compact">
+              {% for a in e.top %}
+                <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                  {% if a.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ a.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+                  <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=a.name, who=who) }}">{{ a.name }}</a></span>
+                  <span class="rank-fig">{{ a.pct | pct }}</span></li>
+              {% endfor %}
+            </ol>
+          </div>
+          <div>
+            <h3 class="list-title">Biggest songs</h3>
+            <ol class="ranked compact">
+              {% for s in e.songs %}
+                <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                  <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+                  <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a><span class="rank-artist">{{ s.artist }}</span></span>
+                  <span class="rank-fig">{{ s.hours | hours }}</span></li>
+              {% endfor %}
+            </ol>
+            <h3 class="list-title">Discoveries</h3>
+            <p class="small">{{ e.new_artists }} new artists, {{ e.stuck }} of them stuck (10+ plays).
+              {% if e.best_find %}Best find: <a class="inline-link" href="{{ url_for('artist_page', name=e.best_find.name, who=who) }}">{{ e.best_find.name }}</a>, {{ e.best_find.hours | hours }} since.{% endif %}</p>
+          </div>
+        </div>
+      </details>
+    </article>
+  {% endfor %}
+</section>
+
+<!-- Discovery: new artists per month, eras shaded behind -->
+{% set d = j.discovery %}
+<section class="card">
+  <div class="card-head">
+    <h2>Finding new artists</h2>
+    <p class="small">New artists per month. The bright part is the ones that <b>stuck</b> (you went on to play them 10+ times).
+      Overall {{ '%.0f' % d.stick_rate }}% of {{ '{:,}'.format(d.total_new) }} new artists stuck.
+      {% if d.best %}Best month for finds that stuck: <b>{{ d.best.month }}</b> ({{ d.best.n }}, including {{ d.best.names | join(', ') }}).{% endif %}
+      The last 12 months averaged {{ '%.0f' % d.recent_avg }} new artists a month, against {{ '%.0f' % d.overall_avg }} overall.
+      (The last few months always look low on finds that stuck: those artists haven't had time to reach 10 plays yet.)</p>
+  </div>
+  <div class="chart-scroll">
+  <svg class="discchart" viewBox="0 0 {{ d.w }} {{ d.h }}" role="img" aria-label="New artists per month, with eras shaded">
+    {% for s in d.shades %}
+      <rect class="era-shade {{ 'odd' if s.odd }}" x="{{ s.x }}" y="{{ d.top - 22 }}" width="{{ s.w }}" height="{{ d.bottom - d.top + 22 }}"/>
+      {% if s.wide %}<text class="era-label" x="{{ s.mid }}" y="{{ d.top - 8 }}" text-anchor="middle">{{ s.label }}</text>{% endif %}
+    {% endfor %}
+    <rect class="warmup" x="{{ d.warmup.x }}" y="{{ d.top }}" width="{{ d.warmup.w }}" height="{{ d.bottom - d.top }}"
+          data-tip="The first months of any history are left out: everything is 'new' then"/>
+    {% for v, ty in d.y_ticks %}
+      <line class="grid" x1="{{ d.left }}" x2="{{ d.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+      <text class="tick" x="{{ d.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ v }}</text>
+    {% endfor %}
+    {% for label, tx in d.x_ticks %}<text class="tick" x="{{ tx }}" y="{{ d.h - 8 }}">{{ label }}</text>{% endfor %}
+    {% for b in d.bars %}
+      {% if b.h %}<rect class="bar-new" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}"/>{% endif %}
+      {% if b.sh %}<rect class="bar-stuck" x="{{ b.x }}" y="{{ b.sy }}" width="{{ b.w }}" height="{{ b.sh }}"/>{% endif %}
+    {% endfor %}
+    {% for b in d.bars %}<rect class="hover-col" x="{{ b.slot_x }}" y="{{ d.top }}" width="{{ d.slot }}" height="{{ d.bottom - d.top }}" data-tip="{{ b.tip }}"/>{% endfor %}
+  </svg>
+  </div>
+  <ul class="legend">
+    <li><span class="swatch stuck"></span>Stuck (10+ plays)</li>
+    <li><span class="swatch new"></span>Tried, didn't stick</li>
+    <li><span class="swatch shade"></span>Eras</li>
+  </ul>
+</section>
+
+<!-- Top artists over time: one small chart per artist, same time axis -->
+{% set L = j.lines %}
+<section class="card">
+  <div class="card-head">
+    <h2>Rise and fall</h2>
+    <p class="small">Share of {{ whose_l }} listening every 3 months, for each era's defining artist plus {{ 'your' if you else 'their' }} biggest overall.
+      Every row uses the same scale (top = {{ L.scale }}), so heights compare across rows.</p>
+  </div>
+  <div class="ridge">
+    {% for r in L.rows %}
+      <div class="ridge-row">
+        <a class="ridge-name" href="{{ url_for('artist_page', name=r.name, who=who) }}">{{ r.name }}</a>
+        <svg viewBox="0 0 {{ L.w }} {{ L.row }}" preserveAspectRatio="none" role="img" aria-label="{{ r.name }}: peaked at {{ r.peak }} in {{ r.peak_when }}">
+          {% for s in L.shades %}<rect class="era-shade {{ 'odd' if s.odd }}" x="{{ s.x }}" y="0" width="{{ s.w }}" height="{{ L.row }}"/>{% endfor %}
+          <path class="ridge-area" d="{{ r.area }}"/>
+          <path class="ridge-line" d="{{ r.line }}" vector-effect="non-scaling-stroke"/>
+          {% for c in r.cols %}<rect class="hover-col" x="{{ c.x }}" y="0" width="{{ c.w }}" height="{{ L.row }}" data-tip="{{ c.tip }}"/>{% endfor %}
+        </svg>
+        <span class="ridge-peak">{{ r.peak }} <span class="small">{{ r.peak_when }}</span></span>
+      </div>
+    {% endfor %}
+    <div class="ridge-ticks">
+      {% for label, tx in L.x_ticks %}<span style="left: {{ 100 * tx / L.w }}%">{{ label }}</span>{% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Loyalty -->
+{% set y = j.loyalty %}
+{% if y %}
+<div class="two-col">
+  <section class="card">
+    <div class="card-head">
+      <h2>Ride or die</h2>
+      <p class="small">Artists that were part of the most eras (at least 0.5% of the era's listening). Each dot is an era, oldest first.</p>
+    </div>
+    <div class="more-wrap">
+      <ol class="ranked loyal-list">
+        {% for a in y.loyal %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            {% if a.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ a.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=a.name, who=who) }}">{{ a.name }}</a>
+              <span class="rank-artist">{{ a.eras }} of {{ y.n_eras }} eras · {{ a.hours | hours }}</span></span>
+            <span class="era-dots" data-tip="{{ a.name }}: in {{ a.eras }} of {{ y.n_eras }} eras">
+              {% for on in a.dots %}<i class="{{ 'on' if on }}"></i>{% endfor %}
+            </span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if y.loyal | length > 5 %}<button type="button" class="more-btn">Show {{ y.loyal | length }}</button>{% endif %}
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head">
+      <h2>Left behind</h2>
+      <p class="small">Artists that were 1%+ of an era and haven't been played at all in the last 6 months{{ '' if you else ' of ' ~ whose ~ ' history' }}.</p>
+    </div>
+    {% if y.left %}
+    <div class="more-wrap">
+      <ol class="ranked">
+        {% for a in y.left %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            {% if a.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ a.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=a.name, who=who) }}">{{ a.name }}</a>
+              <span class="rank-artist">{{ a.peak | pct }} of {{ a.era | replace('The ', 'the ', 1) }} · last played {{ a.last }}</span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if y.left | length > 5 %}<button type="button" class="more-btn">Show {{ y.left | length }}</button>{% endif %}
+    </div>
+    {% else %}
+      <p class="empty small">Nobody. Every artist who was big in an era has been played in the last 6 months.</p>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+<script>
+  motion.reveal(".era, .era-change");
+  document.querySelectorAll("[data-show]").forEach(btn => btn.addEventListener("click", () => {
+    const box = document.querySelector(btn.dataset.show);
+    box.hidden = !box.hidden;
+    btn.textContent = box.hidden ? "explain" : "hide";
+  }));
+</script>
+{% endblock %}

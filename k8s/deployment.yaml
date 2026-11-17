@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spotify-stats
+  labels: { app: spotify-stats }
+spec:
+  replicas: 1                 # exactly one: SQLite is one file on one disk
+  strategy:
+    type: Recreate            # stop the old pod BEFORE starting the new one (they can't share the disk)
+  selector:
+    matchLabels: { app: spotify-stats }
+  template:
+    metadata:
+      labels: { app: spotify-stats }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001        # lets the app write to the storage
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: ghcr.io/dycastcoast/spotify-stats:latest
+          imagePullPolicy: Always       # always fetch the newest :latest on restart
+          ports:
+            - containerPort: 8080
+          env:
+            - { name: SPOTIFY_REDIRECT_URI, value: "https://dycast-stats.montlab.cc/callback" }
+            - { name: PRODUCTION, value: "1" }       # login cookie HTTPS-only
+            - { name: TRUST_PROXY, value: "1" }      # behind Traefik
+            - { name: RUN_SCHEDULER, value: "1" }    # poll Spotify + warm pages every 30 min
+          envFrom:
+            - secretRef: { name: spotify-stats-secrets }   # client ID/secret + Flask key (sealed)
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1536Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          startupProbe:                 # give a slow first start up to 5 minutes
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:                # restart it if it stops answering
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 15
+            timeoutSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: spotify-stats-data }
+        - name: tmp
+          emptyDir: { sizeLimit: 1Gi }

@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% set T = them.display_name or them.id %}
+{% block title %}You vs {{ T }} · Listening Stats{% endblock %}
+{% block content %}
+
+{# Colour follows the PERSON everywhere on this page: blue is always you, orange is always them. #}
+
+<!-- Page-wide filters: everything below follows them -->
+<form class="filters" method="get">
+  <h1>You vs {{ T }}</h1>
+  {% if others | length > 1 %}
+  <label>
+    <span>Compare with</span>
+    <select name="with" onchange="this.form.submit()">
+      {% for p in others %}<option value="{{ p.id }}" {{ 'selected' if p.id == other }}>{{ p.display_name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% else %}<input type="hidden" name="with" value="{{ other }}">{% endif %}
+  <label>
+    <span>Period</span>
+    <select name="period" onchange="this.form.submit()">
+      <option value="">Years you both have</option>
+      {% for y in c.years %}<option value="{{ y }}" {{ 'selected' if y == c.period }}>{{ y }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+
+<!-- The headline: one score, and the lopsided split under it -->
+<section class="hero-stat compare-hero">
+  <div class="hero-text">
+    <span class="hero-kicker">Your taste overlap · {{ c.range }}</span>
+    <div class="hero-main">
+      <span class="hero-number" data-count>{{ '%.0f' % c.score }}%</span>
+      <span class="hero-unit">of your listening is the same</span>
+    </div>
+    <span class="hero-compare">
+      {% if c.shared_b > c.shared_a + 10 %}
+        {{ '%.0f' % c.shared_b }}% of {{ T }}'s listening is artists you play too, but only {{ '%.0f' % c.shared_a }}% of yours is artists {{ T }} plays. {{ T }}'s taste mostly sits inside yours.
+      {% elif c.shared_a > c.shared_b + 10 %}
+        {{ '%.0f' % c.shared_a }}% of your listening is artists {{ T }} plays too, but only {{ '%.0f' % c.shared_b }}% of {{ T }}'s is artists you play. Your taste mostly sits inside {{ T }}'s.
+      {% else %}
+        About {{ '%.0f' % ((c.shared_a + c.shared_b) / 2) }}% of each of your listening is artists the other plays too.
+      {% endif %}
+    </span>
+  </div>
+  <details class="how">
+    <summary>How is this worked out?</summary>
+    <p class="small">Each person's listening is split into shares: if Kanye is 5% of {{ T }}'s time and 1% of yours,
+      only the smaller 1% counts as shared. Add that up over every artist and you get the overlap.
+      Two identical people would score 100%. It uses only {{ c.range }}, the time you both have history for,
+      so whoever has more years of data doesn't look broader just for that.
+      (Your history: {{ c.history_a[0] }} to {{ c.history_a[1] }}. {{ T }}'s: {{ c.history_b[0] }} to {{ c.history_b[1] }}.)
+      By song rather than artist, the overlap is {{ '%.0f' % c.song_score }}%.</p>
+  </details>
+</section>
+
+{% set top = c.artists[0] if c.artists else None %}
+{% set la, lb = c.lopsided.get('a'), c.lopsided.get('b') %}
+{{ m.highlights([
+  {"label": "Your shared favourite", "value": top.name if top else None, "art": {"kind": "artist", "track": top.track} if top and top.track else None,
+   "detail": (top.pa | pct ~ " of your listening, " ~ top.pb | pct ~ " of " ~ T ~ "'s") if top else ""},
+  {"label": "You're the bigger fan", "value": la.name if la else None, "art": {"kind": "artist", "track": la.track} if la and la.track else None,
+   "detail": ("%.0f× more of your listening than %s's (" | format(la.ratio, T) ~ la.mine | pct ~ " vs " ~ la.theirs | pct ~ ")") if la else ""},
+  {"label": T ~ "'s the bigger fan", "value": lb.name if lb else None, "art": {"kind": "artist", "track": lb.track} if lb and lb.track else None,
+   "detail": ("%.0f× more of %s's listening than yours (" | format(lb.ratio, T) ~ lb.mine | pct ~ " vs " ~ lb.theirs | pct ~ ")") if lb else ""},
+]) }}
+
+<!-- Venn: two ways of measuring the overlap, switched in the card -->
+{% if c.venn %}
+{% set v = c.venn %}
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Who listens to what</h2>
+      <p class="small" data-key="count">Every artist either of you played in this period. Circle areas are to scale.</p>
+      <p class="small" data-key="time" hidden>Each bar is 100% of that person's listening. The parts that line up are time spent on artists you both play.</p>
+    </div>
+    <div class="seg-toggle" role="group" aria-label="Measure by" data-part="0">
+      <button type="button" data-value="count" class="active">Artists</button>
+      <button type="button" data-value="time">Listening time</button>
+    </div>
+  </div>
+
+  <div data-key="count">
+    <svg class="venn" viewBox="0 0 {{ v.w }} {{ v.h }}" role="img"
+         aria-label="Venn diagram: {{ c.counts.only_a }} artists only you play, {{ c.counts.shared }} you share, {{ c.counts.only_b }} only {{ T }} plays">
+      <circle class="venn-a" cx="{{ v.a.cx }}" cy="{{ v.cy }}" r="{{ v.a.r }}"
+              data-tip="You: {{ '{:,}'.format(c.counts.a) }} artists in all"/>
+      <circle class="venn-b" cx="{{ v.b.cx }}" cy="{{ v.cy }}" r="{{ v.b.r }}"
+              data-tip="{{ T }}: {{ '{:,}'.format(c.counts.b) }} artists in all"/>
+      <text class="venn-num" x="{{ v.a.label_x }}" y="{{ v.cy }}" text-anchor="middle">{{ '{:,}'.format(c.counts.only_a) }}</text>
+      <text class="venn-sub" x="{{ v.a.label_x }}" y="{{ v.cy + 20 }}" text-anchor="middle">only you</text>
+      <text class="venn-num" x="{{ v.mid_x }}" y="{{ v.cy }}" text-anchor="middle">{{ '{:,}'.format(c.counts.shared) }}</text>
+      <text class="venn-sub" x="{{ v.mid_x }}" y="{{ v.cy + 20 }}" text-anchor="middle">both</text>
+      <text class="venn-num" x="{{ v.b.label_x }}" y="{{ v.cy }}" text-anchor="middle">{{ '{:,}'.format(c.counts.only_b) }}</text>
+      <text class="venn-sub" x="{{ v.b.label_x }}" y="{{ v.cy + 20 }}" text-anchor="middle">only {{ T }}</text>
+    </svg>
+    <p class="small note">{{ '%.0f' % (100 * c.counts.shared / c.counts.b) }}% of {{ T }}'s artists are ones you play too.
+      {{ '%.0f' % (100 * c.counts.shared / c.counts.a) }}% of yours are ones {{ T }} plays. Most of the "only" artists are one-off plays, which is why the time view tells a different story.</p>
+  </div>
+
+  {# Not circles: you and they each spend a different amount of time on the shared artists,
+     so one overlap area can't be to scale for both. Two aligned bars can. #}
+  {% set off = 100 - c.shared_a %}
+  {% set span_ = off + 100 %}
+  <div data-key="time" hidden>
+    <div class="flat-venn">
+      <div class="fv-row">
+        <span class="fv-name"><i class="key-a"></i>You</span>
+        <div class="fv-track">
+          <div class="fv-bar" style="margin-left: 0; width: {{ 100 * 100 / span_ }}%">
+            <span class="fv-only a" style="flex: {{ 100 - c.shared_a }}" data-tip="Artists only you play: {{ '%.0f' % (100 - c.shared_a) }}% of your listening">{{ '%.0f' % (100 - c.shared_a) }}% only you</span>
+            <span class="fv-shared a" style="flex: {{ c.shared_a }}" data-tip="Artists you both play: {{ '%.0f' % c.shared_a }}% of your listening ({{ '{:,.0f}'.format(c.hours_a * c.shared_a / 100) }} h)">{{ '%.0f' % c.shared_a }}% shared</span>
+          </div>
+        </div>
+      </div>
+      <div class="fv-row">
+        <span class="fv-name"><i class="key-b"></i>{{ T }}</span>
+        <div class="fv-track">
+          <div class="fv-bar" style="margin-left: {{ 100 * off / span_ }}%; width: {{ 100 * 100 / span_ }}%">
+            <span class="fv-shared b" style="flex: {{ c.shared_b }}" data-tip="Artists you both play: {{ '%.0f' % c.shared_b }}% of {{ T }}'s listening ({{ '{:,.0f}'.format(c.hours_b * c.shared_b / 100) }} h)">{{ '%.0f' % c.shared_b }}% shared</span>
+            <span class="fv-only b" style="flex: {{ 100 - c.shared_b }}" data-tip="Artists only {{ T }} plays: {{ '%.0f' % (100 - c.shared_b) }}% of {{ T }}'s listening">{% if 100 - c.shared_b >= 12 %}{{ '%.0f' % (100 - c.shared_b) }}% only {{ T }}{% endif %}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="small note">You listened for {{ '{:,.0f}'.format(c.hours_a) }} hours in this period and {{ T }} for {{ '{:,.0f}'.format(c.hours_b) }}.
+      Lighter = artists only that person plays.</p>
+  </div>
+</section>
+{% endif %}
+
+<!-- Shared favourites, side by side -->
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Shared favourites</h2>
+      <p class="small">Ranked by whoever plays them less, so to be near the top an artist has to matter to <b>both</b> of you.
+        Bars show the share of each person's listening; songs show hours, since a single song is a tiny share.</p>
+    </div>
+    <div class="seg-toggle" role="group" aria-label="Artists or songs" data-part="0">
+      <button type="button" data-value="artists" class="active">Artists</button>
+      <button type="button" data-value="songs">Songs</button>
+    </div>
+  </div>
+  <p class="duo-key small"><span><i class="key-a"></i>You</span><span><i class="key-b"></i>{{ T }}</span></p>
+  {% for key, rows in (("artists", c.artists), ("songs", c.songs)) %}
+  <div data-key="{{ key }}" {{ 'hidden' if key == 'songs' }}>
+    <div class="more-wrap">
+      <ol class="ranked duo-list">
+        {% for r in rows %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            {% if r.track %}<img class="rank-art {{ 'round' if key == 'artists' }}" alt="" data-art-kind="{{ 'artist' if key == 'artists' else 'track' }}" data-art-track="{{ r.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+            <span class="rank-text">
+              {% if key == 'artists' %}
+                <a class="rank-name" href="{{ url_for('artist_page', name=r.name) }}">{{ r.name }}</a>
+              {% else %}
+                <a class="rank-name" href="{{ url_for('song', track_id=r.track) }}">{{ r.name }}</a>
+                <span class="rank-artist">{{ r.artist }}</span>
+              {% endif %}
+            </span>
+            <span class="duo">
+              <span class="duo-row" data-tip="You: {{ r.pa | pct }} of your listening · {{ '%.0f' % r.ha if r.ha >= 1 else '%.1f' % r.ha }} h">
+                <span class="duo-bar a" style="width: {{ r.wa }}%"></span><span class="duo-fig">{{ r.pa | pct if key == "artists" else r.ha | hours }}</span>
+              </span>
+              <span class="duo-row" data-tip="{{ T }}: {{ r.pb | pct }} of their listening · {{ '%.0f' % r.hb if r.hb >= 1 else '%.1f' % r.hb }} h">
+                <span class="duo-bar b" style="width: {{ r.wb }}%"></span><span class="duo-fig">{{ r.pb | pct if key == "artists" else r.hb | hours }}</span>
+              </span>
+            </span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if rows | length > 5 %}<button type="button" class="more-btn">Show {{ rows | length }}</button>{% endif %}
+    </div>
+    {% if key == 'songs' %}<p class="small note">{{ '{:,}'.format(c.song_counts.shared) }} songs you've both played in this period.</p>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<!-- Overlap by year (always the shared years, whatever the period filter says) -->
+{% set yc = c.by_year %}
+{% if yc %}
+<section class="card">
+  <div class="card-head">
+    <h2>Closer or drifting apart?</h2>
+    <p class="small">Your taste overlap each year. Closest in <b>{{ yc.best.year }}</b> at {{ '%.0f' % yc.best.score }}%{% if yc.best.top %}, when the artist you shared most was {{ yc.best.top }}{% endif %}.
+      {{ yc.first.year }} was {{ '%.0f' % yc.first.score }}% and {{ yc.last.year }} {{ '%.0f' % yc.last.score }}%.
+      Always uses every year you both have, whatever the period above.</p>
+  </div>
+  <svg class="yearchart" viewBox="0 0 {{ yc.w }} {{ yc.h }}" role="img" aria-label="Taste overlap per year, highest in {{ yc.best.year }}">
+    {% for value, ty in yc.y_ticks %}
+      <line class="grid" x1="{{ yc.left }}" x2="{{ yc.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+      <text class="tick" x="{{ yc.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ value }}%</text>
+    {% endfor %}
+    <path class="line" d="{{ yc.path }}"/>
+    {% for p in yc.points %}
+      <circle class="dot {{ 'partial' if p.partial }} {{ 'peak' if p.peak }}" cx="{{ p.x }}" cy="{{ p.y }}" r="5"/>
+      <text class="tick" x="{{ p.x }}" y="{{ yc.h - 8 }}" text-anchor="middle">{{ p.year }}</text>
+      {% if p.peak %}<text class="dot-label" x="{{ p.x }}" y="{{ p.y - 14 }}" text-anchor="middle">{{ '%.0f' % p.score }}%</text>{% endif %}
+    {% endfor %}
+    {% for p in yc.points %}
+      <rect class="hover-col" x="{{ p.x - yc.slot / 2 }}" y="0" width="{{ yc.slot }}" height="{{ yc.bottom }}" data-tip="{{ p.tip }}"/>
+    {% endfor %}
+  </svg>
+  {% if yc.points | selectattr('partial') | list %}<p class="small note"><span class="hollow-key"></span> = part of a year (one of your histories starts or ends that year)</p>{% endif %}
+</section>
+{% endif %}
+
+<!-- Who found them first -->
+{% set f = c.found %}
+{% if f.total %}
+<section class="card">
+  <div class="card-head">
+    <h2>Who found them first?</h2>
+    <p class="small">The {{ f.total }} artists you've both played 10+ times. Whoever's first listen came earlier found them first.
+      If that first listen is from before the other person's history even starts, it counts as <b>can't tell</b>:
+      they might have been listening for years before their records begin.</p>
+  </div>
+  {% set segs = [
+    ("You first", f.counts.a, "var(--you)"), ("Same week", f.counts.same, "#5a5d66"),
+    (T ~ " first", f.counts.b, "var(--them)"), ("Can't tell", f.counts.unknown, "#33353c")] %}
+  <div class="segbar">
+    {% for label, n, colour in segs if n %}
+      <span style="flex: {{ n }}; background: {{ colour }}" data-tip="{{ label }}: {{ n }} artists">{% if n / f.total >= 0.1 %}{{ n }}{% endif %}</span>
+    {% endfor %}
+  </div>
+  <ul class="legend">
+    {% for label, n, colour in segs %}<li><span class="swatch" style="background: {{ colour }}"></span>{{ label }} <b>{{ n }}</b></li>{% endfor %}
+  </ul>
+  {% set fair = f.counts.a + f.counts.b %}
+  {% if fair %}
+  <p class="small note">Of the ones that can be called, {{ T if f.counts.b > f.counts.a else 'you' }} got there first {{ '%.0f' % (100 * [f.counts.a, f.counts.b] | max / fair) }}% of the time.</p>
+  {% endif %}
+
+  <h3 class="list-title">Your biggest shared artists</h3>
+  <div class="more-wrap">
+    <ol class="ranked found-list">
+      {% for r in f.rows %}
+        <li class="has-art {{ 'extra' if loop.index > 5 }}">
+          <span class="rank-num">{{ loop.index }}</span>
+          {% if r.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ r.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+          <span class="rank-text">
+            <a class="rank-name" href="{{ url_for('artist_page', name=r.artist) }}">{{ r.artist }}</a>
+            <span class="rank-artist" data-tip="Your first listen: {{ r.a_date }} · {{ T }}'s: {{ r.b_date }}">you {{ r.a_date }} · {{ T }} {{ r.b_date }}</span>
+          </span>
+          <span class="verdict {{ r.winner }}">
+            {% if r.winner == 'a' %}<i class="key-a"></i>You, {{ r.lead }} earlier
+            {% elif r.winner == 'b' %}<i class="key-b"></i>{{ T }}, {{ r.lead }} earlier
+            {% elif r.winner == 'same' %}Same week
+            {% else %}Can't tell{% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if f.rows | length > 5 %}<button type="button" class="more-btn">Show {{ f.rows | length }}</button>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Only one of you -->
+<div class="two-col">
+  {% for title, rows, cls in (("Only you", c.only_a, "a"), ("Only " ~ T, c.only_b, "b")) %}
+  <section class="card">
+    <div class="card-head">
+      <h2><i class="key-{{ cls }}"></i>{{ title }}</h2>
+      <p class="small">{{ 'Your' if cls == 'a' else T ~ "'s" }} biggest artists in this period that {{ T if cls == 'a' else 'you' }} {{ 'has' if cls == 'a' else 'have' }} never played, not even once.</p>
+    </div>
+    <div class="more-wrap">
+      <ol class="ranked">
+        {% for r in rows %}
+          <li class="has-art {{ 'extra' if loop.index > 5 }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            {% if r.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ r.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+            <span class="rank-text">
+              {% if cls == 'a' %}<a class="rank-name" href="{{ url_for('artist_page', name=r.name) }}">{{ r.name }}</a>
+              {% else %}<a class="rank-name" href="{{ url_for('artist_page', name=r.name, who=other) }}">{{ r.name }}</a>{% endif %}
+            </span>
+            <span class="rank-fig">{{ r.fig }}</span>
+            <span class="meter-bar rank-bar {{ cls }}"><span style="width: {{ r.bar }}%"></span></span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if rows | length > 5 %}<button type="button" class="more-btn">Show {{ rows | length }}</button>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<!-- Listening together -->
+{% set j = c.jams %}
+{% if j %}
+<section class="card jams">
+  <div class="card-head">
+    <h2>Listening together</h2>
+    <p class="small">Times you were both playing the same song at the same moment, within 5 minutes of each other:
+      a Jam, or one of you on the other's console. A single match on its own isn't counted, since that can be chance.
+      This always uses all your history, whatever the period above.</p>
+  </div>
+  <section class="tiles">
+    <div class="tile"><span class="tile-label">Sessions</span><span class="tile-value" data-count>{{ j.count }}</span></div>
+    <div class="tile"><span class="tile-label">Hours together</span><span class="tile-value" data-count>{{ '%.1f' % j.hours }}</span></div>
+    <div class="tile"><span class="tile-label">Songs</span><span class="tile-value" data-count>{{ j.songs }}</span></div>
+    <div class="tile"><span class="tile-label">After midnight</span><span class="tile-value" data-count>{{ j.late_share }}%</span></div>
+  </section>
+
+  <div class="jam-grid">
+    <div>
+      <h3 class="list-title">Whose music was it?</h3>
+      <p class="small">For each song in a session, who'd played it more before that night.</p>
+      {% set o = j.owner %}
+      {% set segs = [("Yours", o.a, "var(--you)"), ("Even", o.both + o.new, "#5a5d66"), (T ~ "'s", o.b, "var(--them)")] %}
+      <div class="segbar">
+        {% for label, n, colour in segs if n %}
+          <span style="flex: {{ n }}; background: {{ colour }}" data-tip="{{ label }}: {{ n }}% of the songs">{% if n >= 10 %}{{ n }}%{% endif %}</span>
+        {% endfor %}
+      </div>
+      <ul class="legend">
+        {% for label, n, colour in segs %}<li><span class="swatch" style="background: {{ colour }}"></span>{{ label }} <b>{{ n }}%</b></li>{% endfor %}
+      </ul>
+      <p class="small note">
+        {% if o.b > o.a + 20 %}{{ T }} usually has the aux: most of what you played together was {{ T }}'s music.
+        {% elif o.a > o.b + 20 %}You usually have the aux: most of what you played together was your music.
+        {% else %}Pretty even: you both bring the music.{% endif %}
+      </p>
+    </div>
+    <div>
+      <h3 class="list-title">Most played together</h3>
+      <ol class="ranked compact">
+        {% for s in j.top_songs[:5] %}
+          <li class="has-art">
+            <span class="rank-num">{{ loop.index }}</span>
+            <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track) }}">{{ s.name }}</a><span class="rank-artist">{{ s.artist }}</span></span>
+            <span class="rank-fig">{{ s.n }}×</span>
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+
+  {% set b = j.biggest %}
+  <div class="story jam-story">
+    <span class="hl-label">The big one</span>
+    <p class="story-text"><b>{{ b.date }}</b>, from {{ b.time }}: {{ b.songs | length }} songs and {{ b.minutes // 60 }} h {{ b.minutes % 60 }} min together{% if b.my_device and b.my_device == b.their_device %}, both on {{ b.my_device }}{% endif %}{% if b.my_country %}, while you were away (Spotify had you in <span class="flag">{{ b.my_country_code | flag }}</span> {{ b.my_country }}){% endif %}.</p>
+  </div>
+
+  <h3 class="list-title">Every session</h3>
+  <div class="more-wrap">
+    <ul class="sessions">
+      {% for s in j.sessions %}
+        <li class="{{ 'extra' if loop.index > 5 }}">
+          <details>
+            <summary>
+              <span class="s-date">{{ s.date }}</span>
+              <span class="s-meta">{{ s.time }} · {{ s.songs | length }} songs · {{ s.minutes }} min{% if s.my_device and s.my_device == s.their_device %} · both on {{ s.my_device }}{% elif s.my_device and s.their_device %} · you on {{ s.my_device }}, {{ T }} on {{ s.their_device }}{% endif %}</span>
+            </summary>
+            <ol class="session-songs">
+              {% for x in s.songs %}
+                <li><a href="{{ url_for('song', track_id=x.track) }}">{{ x.name }}</a> <span class="small">{{ x.artist }}</span>
+                  {% if x.whose == 'a' %}<i class="key-a" title="yours"></i>{% elif x.whose == 'b' %}<i class="key-b" title="{{ T }}'s"></i>{% endif %}</li>
+              {% endfor %}
+            </ol>
+          </details>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if j.sessions | length > 5 %}<button type="button" class="more-btn">Show {{ j.sessions | length }}</button>{% endif %}
+  </div>
+  <p class="small note">Can only find sessions while you both have history, so nothing after {{ c.shared_end }} yet.
+    Dots in a session's song list show whose music it was: <i class="key-a"></i>yours, <i class="key-b"></i>{{ T }}'s.</p>
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+<script>
+  // The headline number counts up too (the shared script only does tiles and highlights).
+  document.querySelectorAll(".hero-number[data-count]").forEach(el => motion.countUp(el));
+</script>
+{% endblock %}

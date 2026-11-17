@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ a.name }} · Listening Stats{% endblock %}
+{% block content %}
+
+<!-- The artist: their photo (which also sets the page colour), name, and where they rank -->
+<section class="entity-hero {{ 'themed' if page_theme }}">
+  <figure class="hero-cover" id="hero-cover" data-art-kind="artist" data-art-track="{{ a.art_track }}">
+    <div class="cover-frame big round"><img alt="Photo of {{ a.name }}" {% if photo_url %}src="{{ photo_url }}"{% endif %}></div>
+  </figure>
+  <div class="entity-text">
+    <span class="hero-kicker">Artist{% if whose[0] != "Your" %} · in {{ whose[0] }} history{% endif %}</span>
+    <h1 class="entity-name {{ 'long' if a.name | length > 14 }} {{ 'very-long' if a.name | length > 40 }}">{{ a.name }}</h1>
+    <span class="hero-compare">{{ whose[0] }} #{{ '{:,}'.format(a.rank) }} artist of all time (out of {{ '{:,}'.format(a.of) }})
+      · {{ a.share }}% of all {{ whose[1] }} listening</span>
+  </div>
+</section>
+
+{% set vs_url = url_for('vs_panel', kind='artist', name=a.name, who=who) %}
+{% include "_vs_button.html" %}
+
+<section class="tiles">
+  {% for label, value in a.tiles %}
+    <div class="tile"><span class="tile-label">{{ label }}</span><span class="tile-value" {% if label != 'First listen' %}data-count{% endif %}>{{ value }}</span></div>
+  {% endfor %}
+</section>
+
+{# How you met: the first listen, and what happened in the month after. #}
+<section class="card story">
+  <span class="hl-label">How you met</span>
+  <p class="story-text">
+    {% if a.first.found == "found you" %}<b>They found you.</b> {% elif a.first.found %}<b>You found them.</b> {% endif %}
+    Your first listen was
+    <a class="inline-song" href="{{ url_for('song', track_id=a.first.song_track, who=who) }}"><img alt="" data-art-kind="track" data-art-track="{{ a.first.song_track }}">{{ a.first.song }}</a>
+    on {{ a.first.date }}{% if a.first.found == "found you" %}, which came on by itself{% elif a.first.found %}, which you put on yourself{% endif %}.
+    In the month that followed, you played them <b>{{ a.first.month_after }}</b> time{{ 's' if a.first.month_after != 1 }}.
+  </p>
+</section>
+
+{{ m.highlights([
+  {"label": "Peak year", "value": a.peak_year.year ~ "", "detail": a.peak_year.hours ~ " hours of them that year"},
+  {"label": "Biggest day", "value": (a.biggest_day.plays ~ " plays") if a.biggest_day else None, "count": true,
+   "detail": "on " ~ a.biggest_day.date if a.biggest_day else ""},
+  {"label": "The comeback", "value": (a.comeback.months ~ " months away") if a.comeback else None, "count": true,
+   "detail": ("gone from " ~ a.comeback.from ~ ", back in " ~ a.comeback.to) if a.comeback else ""},
+]) }}
+
+{% if a.history %}
+  {{ m.history(a.history, whose[0] ~ " history with them", "Plays per month, from your first listen.") }}
+{% endif %}
+
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <h2>{{ whose[0] }} top {{ a.name }}</h2>
+    <div class="seg-toggle" role="group" aria-label="Songs or albums" data-part="0">
+      <button type="button" data-value="songs" class="active">Songs</button>
+      <button type="button" data-value="albums">Albums</button>
+    </div>
+  </div>
+  <div data-key="songs">{{ m.songs(a.top_songs, who) }}</div>
+  <div data-key="albums" hidden>
+    <ol class="ranked">
+      {% for al in a.albums %}
+        <li><span class="rank-num">{{ loop.index }}</span><span class="rank-text"><a class="rank-name" href="{{ url_for('album_page', name=al.name, artist=a.name, who=who) }}">{{ al.name }}</a></span><span class="rank-fig">{{ al.fig }}</span></li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+<div class="two-col">
+  {% if a.when %}{{ m.when(a.when, "artist") }}{% endif %}
+  {% if a.treatment %}
+    <div>
+      {{ m.treatment(a.treatment, "artist") }}
+      {% if a.worst %}
+        <p class="small note worst">Most skipped of theirs:
+          <a href="{{ url_for('song', track_id=a.worst.track, who=who) }}">{{ a.worst.name }}</a> ({{ a.worst.pct }}% skipped)</p>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}{% include "_entity_scripts.html" %}{% endblock %}
