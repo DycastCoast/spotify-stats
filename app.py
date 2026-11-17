@@ -455,35 +455,66 @@ def artist_page(sp):
                            photo_url=photo_url, page_theme=colour, friends=friends_of(who), whose=possessive(who))
 
 
-last_import = {}          # user -> when they last uploaded (at most one every 2 minutes)
+last_import = {}          # person imported into -> when (at most one upload every 2 minutes)
+
+# The site owner(s) (SITE_OWNERS in the deployment, comma-separated Spotify IDs) can also import
+# an export into SOMEONE ELSE's history: e.g. a friend's zip they sent you, so the friend only
+# has to log in. Everyone else can only ever import into their own history.
+SITE_OWNERS = {u.strip() for u in os.environ.get("SITE_OWNERS", "").split(",") if u.strip()}
+USER_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")      # what a Spotify user ID can look like
+
+
+def everyone_known():
+    """Everyone with a row in users (including people imported for who haven't logged in yet)."""
+    from db import connect
+    with connect() as conn:
+        return {r["id"]: r["display_name"] or r["id"] for r in conn.execute("SELECT id, display_name FROM users")}
 
 
 @app.route("/import", methods=["GET", "POST"])
 @login_required
 def import_page(sp):
-    """Upload your own Spotify export. Only ever into your OWN history (see uploads.py)."""
+    """Upload a Spotify export. Into your OWN history, or (site owners only) a chosen person's."""
     me = session["user_id"]
-    result, error, need_confirm = None, None, None
+    owner = me in SITE_OWNERS
+    known = everyone_known()
+    result, error, need_confirm, target, target_name = None, None, None, me, "you"
     if request.method == "POST":
         if request.form.get("csrf") != session.get("csrf"):
             abort(400)
-        if time.time() - last_import.get(me, 0) < 120:
-            error = "You just uploaded something: give it a couple of minutes."
+        if owner and request.form.get("for") not in (None, "", me):
+            if request.form.get("for") == "new":
+                target = request.form.get("new_id", "").strip()
+                target_name = request.form.get("new_name", "").strip()[:60] or target
+            else:
+                target = request.form.get("for")
+                target_name = known.get(target, target)
+            if not USER_ID.fullmatch(target or "") or (request.form.get("for") != "new" and target not in known):
+                error = "That isn't a valid Spotify user ID (it's the last part of their profile link)."
+        if error:
+            pass
+        elif time.time() - last_import.get(target, 0) < 120:
+            error = "That history was just imported: give it a couple of minutes."
         elif "export" not in request.files or not request.files["export"].filename:
-            error = "Choose your my_spotify_data.zip first."
+            error = "Choose the my_spotify_data.zip first."
         else:
-            last_import[me] = time.time()
+            last_import[target] = time.time()
             people = {p["id"]: p["display_name"] or p["id"] for p in stats.people()}
+            if target != me:
+                from db import add_user_if_missing
+                add_user_if_missing(target, target_name)     # their plays need a users row; filled in when they log in
             try:
-                result = uploads.handle_upload(request.files["export"], me, people,
+                result = uploads.handle_upload(request.files["export"], target, people,
                                                confirmed=request.form.get("mine") == "1")
                 if result.get("need_confirm"):
                     need_confirm, result = result, None
-                    last_import.pop(me, None)      # let them re-upload straight away with the box ticked
+                    last_import.pop(target, None)      # let them re-upload straight away with the box ticked
             except uploads.Refused as err:
                 error = str(err)
     return render_template("import.html", user=sp.current_user(), who=me, result=result, error=error,
-                           need_confirm=need_confirm, mine=uploads.my_history(me), max_mb=uploads.MAX_UPLOAD_MB)
+                           need_confirm=need_confirm, mine=uploads.my_history(me), max_mb=uploads.MAX_UPLOAD_MB,
+                           owner=owner, known={k: v for k, v in known.items() if k != me},
+                           target=target, target_name=target_name)
 
 
 @app.route("/import/delete", methods=["POST"])
@@ -494,7 +525,8 @@ def import_delete(sp):
         abort(400)
     removed = uploads.delete_export(session["user_id"])
     return render_template("import.html", user=sp.current_user(), who=session["user_id"], removed=removed,
-                           mine=uploads.my_history(session["user_id"]), max_mb=uploads.MAX_UPLOAD_MB)
+                           mine=uploads.my_history(session["user_id"]), max_mb=uploads.MAX_UPLOAD_MB,
+                           owner=session["user_id"] in SITE_OWNERS, known={}, target=session["user_id"], target_name="you")
 
 
 @app.errorhandler(413)

@@ -9,7 +9,7 @@
 {% if error %}<div class="card notice bad" role="alert"><b>Not imported.</b> {{ error }}</div>{% endif %}
 {% if result %}
   <div class="card notice good" role="status">
-    <b>Done.</b> {{ '{:,}'.format(result.new) }} new plays added, covering {{ result.first[:10] }} to {{ result.last[:10] }}
+    <b>Done{% if target != who %} for {{ target_name }}{% endif %}.</b> {{ '{:,}'.format(result.new) }} new plays added, covering {{ result.first[:10] }} to {{ result.last[:10] }}
     {% if result.music - result.new %}({{ '{:,}'.format(result.music - result.new) }} were already here){% endif %}.
     {% if result.private %}{{ '{:,}'.format(result.private) }} private-session plays were left out.{% endif %}
     Your pages will take a few seconds the first time while they catch up.
@@ -38,9 +38,25 @@
     {% endif %}
     <form method="post" enctype="multipart/form-data" class="upload-form" id="upload-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if owner %}
+        {# Site owners only: import a friend's export for them, so they just log in. #}
+        <label class="for-who"><span class="small">Whose history is it?</span>
+          <select name="for" id="import-for">
+            <option value="">Mine</option>
+            {% for id, name in known.items() %}<option value="{{ id }}" {{ 'selected' if target == id }}>{{ name }}</option>{% endfor %}
+            <option value="new">Someone new…</option>
+          </select>
+        </label>
+        <div class="new-person" id="new-person" hidden>
+          <input name="new_id" placeholder="Their Spotify user ID" aria-label="Their Spotify user ID" autocomplete="off">
+          <input name="new_name" placeholder="Their name" aria-label="Their name" autocomplete="off">
+          <p class="small">The ID is the last part of their profile link (Spotify → Profile → Share → Copy link).
+            Use exactly the ID they'll log in with, so the history is waiting for them.</p>
+        </div>
+      {% endif %}
       <input type="file" name="export" accept=".zip,application/zip" required>
       {% if need_confirm %}
-        <label class="tick"><input type="checkbox" name="mine" value="1" required> This is my own Spotify data</label>
+        <label class="tick"><input type="checkbox" name="mine" value="1" required> This is {{ "my own" if target == who else target_name + "'s" }} Spotify data</label>
       {% endif %}
       <button type="submit" class="button">Import</button>
       <p class="small upload-wait" hidden>Uploading and importing… this can take up to a minute. Don't close the page.</p>
@@ -73,6 +89,14 @@
 <script>
   // Imports take a while: say so, and stop a second click from starting another one.
   const form = document.getElementById("upload-form");
+  const forWho = document.getElementById("import-for"), newPerson = document.getElementById("new-person");
+  if (forWho) {
+    const sync = () => {
+      newPerson.hidden = forWho.value !== "new";
+      newPerson.querySelectorAll("input").forEach(i => i.required = forWho.value === "new");
+    };
+    forWho.addEventListener("change", sync); sync();
+  }
   if (form) form.addEventListener("submit", () => {
     form.querySelector(".upload-wait").hidden = false;
     form.querySelector("button[type=submit]").disabled = true;

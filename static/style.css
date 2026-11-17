@@ -1378,3 +1378,8 @@ html, body { overflow-x: clip; }
 .card .np-song { font-size: 1.6rem; font-weight: 700; }
 .topbar .user .np-pill .np-bars { display: inline-flex; }
 @media (max-width: 700px) { .card .np-song { font-size: 1.25rem; } }
+.for-who { display: grid; gap: 4px; }
+.for-who select, .new-person input { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font: inherit; }
+.new-person { display: grid; gap: 8px; width: 100%; max-width: 420px; }
+.new-person[hidden] { display: none; }

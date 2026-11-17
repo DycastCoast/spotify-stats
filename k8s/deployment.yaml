@@ -30,6 +30,7 @@ spec:
             - { name: PRODUCTION, value: "1" }       # login cookie HTTPS-only
             - { name: TRUST_PROXY, value: "1" }      # behind Traefik
             - { name: RUN_SCHEDULER, value: "1" }    # poll Spotify + warm pages every 30 min
+            - { name: SITE_OWNERS, value: "jackedwardscoll" }   # may import exports for other people
           envFrom:
             - secretRef: { name: spotify-stats-secrets }   # client ID/secret + Flask key (sealed)
           securityContext:
