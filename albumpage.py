@@ -15,6 +15,8 @@ import re
 from collections import Counter
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 from entity import (MIN_PLAY_MS, SESSION_GAP_S, comeback, fmt_date, monthly_chart, timeline,
                     when_you_play)
 from stats import latest_play_id
@@ -47,6 +49,7 @@ def sittings(tl, positions):
 
 
 @lru_cache(maxsize=4)
+@disk_cached(versions=1)
 def _album_habit(user_id, _latest):
     """Across ALL your listening: what share of plays happen as part of an album run
     (3+ songs from one album back to back)? The baseline every album is compared with."""

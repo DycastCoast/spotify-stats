@@ -29,12 +29,15 @@
 
   <section class="card">
     <div class="card-head"><h2>2. Upload it here</h2>
-      <p class="small">Up to {{ max_mb }} MB. It only ever goes into <b>your</b> history, the upload is deleted straight after,
+      <p class="small">Up to {{ max_mb }} MB. It only ever goes into {{ "the history you choose below" if owner else "<b>your</b> history" | safe }}, the upload is deleted straight after,
         and IP addresses and private-session plays are never stored. Uploading a newer export later only adds what's new.</p></div>
     {% if need_confirm %}
-      <div class="notice warn">That export covers <b>{{ need_confirm.first }} to {{ need_confirm.last }}</b> ({{ '{:,}'.format(need_confirm.music) }} plays),
-        but the site has nothing of yours from those dates to check it against. Every export is called my_spotify_data.zip,
-        so please make sure it's yours, tick the box, and upload it again.</div>
+      <div class="notice warn">
+        <p class="going-into big">This will go into <b>{{ "YOUR" if target == who else target_name ~ "'s" }}</b> history.</p>
+        That export covers <b>{{ need_confirm.first }} to {{ need_confirm.last }}</b> ({{ '{:,}'.format(need_confirm.music) }} plays),
+        but the site has nothing from {{ "you" if target == who else target_name }} over those dates to check it against.
+        Every export is called my_spotify_data.zip, so check it really is {{ "yours" if target == who else target_name ~ "'s" }}
+        (whose dates are those?), then tick the box and upload it again.</div>
     {% endif %}
     <form method="post" enctype="multipart/form-data" class="upload-form" id="upload-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -58,6 +61,7 @@
       {% if need_confirm %}
         <label class="tick"><input type="checkbox" name="mine" value="1" required> This is {{ "my own" if target == who else target_name + "'s" }} Spotify data</label>
       {% endif %}
+      <p class="going-into" id="going-into">Goes into: <b>{{ "your history" if target == who else target_name ~ "'s history" }}</b></p>
       <button type="submit" class="button">Import</button>
       <p class="small upload-wait" hidden>Uploading and importing… this can take up to a minute. Don't close the page.</p>
     </form>
@@ -91,11 +95,18 @@
   const form = document.getElementById("upload-form");
   const forWho = document.getElementById("import-for"), newPerson = document.getElementById("new-person");
   if (forWho) {
+    const into = document.querySelector("#going-into b");
     const sync = () => {
+      const opt = forWho.options[forWho.selectedIndex];
+      const name = forWho.value === "new" ? (newPerson.querySelector("[name=new_name]").value.trim() || "the new person")
+                 : forWho.value ? opt.textContent : null;
+      if (into) into.textContent = name ? `${name}'s history` : "your history";
       newPerson.hidden = forWho.value !== "new";
       newPerson.querySelectorAll("input").forEach(i => i.required = forWho.value === "new");
     };
-    forWho.addEventListener("change", sync); sync();
+    forWho.addEventListener("change", sync);
+    newPerson.querySelector("[name=new_name]").addEventListener("input", sync);
+    sync();
   }
   if (form) form.addEventListener("submit", () => {
     form.querySelector(".upload-wait").hidden = false;

@@ -16,6 +16,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 from db import connect
 from stats import LOCAL_TZ, MIN_PLAY_MS, PICKED, PLAYED_ON, latest_play_id
 
@@ -178,6 +180,7 @@ def timeline(user_id):
 
 
 @lru_cache(maxsize=4)
+@disk_cached(versions=1)
 def _timeline(user_id, latest_play_id):
     with connect() as conn:
         cursor = conn.execute(

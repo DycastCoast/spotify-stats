@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dycast-cloudflare
+  labels:
+    montlab.app/cloudflare: 'true'
+data:
+  cloudflare: |
+    {"host": "dycast-stats.montlab.cc",
+     "access": {"session_duration": "24h",
+                "policies": [{"name": "jack", "decision": "allow",
+                              "include": [{"email": {"email": "jackedwardsicoll@gmail.com"}},
+                                          {"email": {"email": "edubzboy@gmail.com"}}]}],
+                "bypass": false}}

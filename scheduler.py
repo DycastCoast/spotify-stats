@@ -31,6 +31,13 @@ def run_once():
         log.info("warm: %ss", warm.warm()["seconds"])
     except Exception:
         log.exception("warm failed")
+    try:
+        import diskcache
+        swept = diskcache.sweep()              # saved pages nobody's asked for in a month
+        if swept:
+            log.info("cache: removed %s old files", swept)
+    except Exception:
+        log.exception("cache sweep failed")
 
 
 def loop():

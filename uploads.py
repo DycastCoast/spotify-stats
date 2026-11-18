@@ -164,4 +164,6 @@ def delete_export(user_id):
     """Remove everything this person imported from exports (their live-tracked plays stay)."""
     with connect() as conn:
         n = conn.execute("DELETE FROM plays WHERE user_id = ? AND source = 'export'", (user_id,)).rowcount
+    from db import bump_data_version
+    bump_data_version(user_id)              # so every page drops what it worked out from the old plays
     return n

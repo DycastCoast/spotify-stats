@@ -32,4 +32,5 @@ uploads/
 # Kubernetes secret before sealing: never commit
 k8s/secret.yaml
 
-k8s/cloudflare-*.yaml
+# Saved worked-out pages (diskcache.py): rebuilt automatically
+cache/

@@ -7,6 +7,8 @@ import statistics
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+
+from diskcache import disk_cached
 from zoneinfo import ZoneInfo
 
 from db import connect
@@ -192,10 +194,14 @@ def longest_streak(days):
 # ------------------------------------------------------------------ the page
 
 def latest_play_id(user_id):
-    """The newest play's row ID. It changes whenever plays are added (poller,
-    import), so it makes a cheap "has anything changed?" key for the caches."""
+    """A cheap "has anything changed?" key for the caches: the newest play's row ID (changes
+    when plays are added) plus the person's data_version (goes up when plays are deleted).
+    None if they have no plays at all."""
     with connect() as conn:
-        return conn.execute("SELECT MAX(id) FROM plays WHERE user_id = ?", (user_id,)).fetchone()[0]
+        newest, version = conn.execute(
+            "SELECT (SELECT MAX(id) FROM plays WHERE user_id = ?), (SELECT data_version FROM users WHERE id = ?)",
+            (user_id, user_id)).fetchone()
+    return None if newest is None else f"{newest}.{version or 0}"
 
 
 def overview(user_id, year=None, device=None):
@@ -220,6 +226,7 @@ def _year_total_hours(user_id, year, latest_play_id):
 
 
 @lru_cache(maxsize=32)
+@disk_cached(versions=1)
 def _overview(user_id, year, device, latest_play_id):
     """The actual calculation, in one pass over the person's plays.
 
@@ -467,6 +474,7 @@ def _overview(user_id, year, device, latest_play_id):
 
 
 @lru_cache(maxsize=32)
+@disk_cached(versions=1)
 def discovery(user_id, year, latest_play_id):
     """Did each artist find you, or did you find them?
 

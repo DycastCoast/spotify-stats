@@ -12,6 +12,8 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 import entity
 from entity import SESSION_GAP_S, fmt_date, timeline
 from stats import LOCAL_TZ, latest_play_id
@@ -34,6 +36,7 @@ def skips(user_id):
 
 
 @lru_cache(maxsize=4)
+@disk_cached(versions=1)
 def _skips(user_id, _latest):
     tl = timeline(user_id)
     n = len(tl.track)

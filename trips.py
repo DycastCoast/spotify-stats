@@ -19,6 +19,8 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 import entity
 import geo
 from compare import COUNTRIES
@@ -248,6 +250,7 @@ def trips(user_id):
 
 
 @lru_cache(maxsize=4)
+@disk_cached(versions=1)
 def _trips(user_id, _latest):
     days = located_days(user_id)
     home, found, extra = find_trips(days)

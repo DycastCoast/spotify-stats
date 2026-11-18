@@ -27,6 +27,8 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 import numpy as np
 
 import entity
@@ -444,6 +446,7 @@ def journey(user_id, detail="broad"):
 
 
 @lru_cache(maxsize=8)
+@disk_cached(versions=1)
 def _journey(user_id, detail, _latest):
     tl = entity.timeline(user_id)
     months, first, plays = monthly(tl)

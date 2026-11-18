@@ -134,6 +134,22 @@ def played_time(iso_string):
 
 
 @app.context_processor
+def logged_in_user():
+    """Pages that don't pass `user` themselves (error pages, mostly) still get the menu.
+    A page's own `user=` wins over this. No Spotify request: just the saved name."""
+    me = session.get("user_id")
+    if not me:
+        return {}
+    from db import connect
+    with connect() as conn:
+        row = conn.execute("SELECT display_name FROM users WHERE id = ?", (me,)).fetchone()
+    if not row:
+        return {}
+    return {"user": {"id": me, "display_name": row["display_name"] or me, "images": []},
+            "has_history": stats.latest_play_id(me) is not None}
+
+
+@app.context_processor
 def asset_version():
     """The stylesheet's address carries a number that changes whenever the file does
     (style.css?v=1731782400), so browsers fetch the new one instead of a stale saved copy."""
@@ -561,6 +577,11 @@ def too_big(_err):
 @login_required
 def now_page(sp):
     """Your listening right now vs your usual. ?who=."""
+    me = session["user_id"]
+    if not request.args.get("who") and stats.latest_play_id(me) is None:
+        # Brand new here: nothing to show yet, so say hello and point at the Import page.
+        friends = [p for p in stats.people() if p["id"] != me]
+        return render_template("welcome.html", user=sp.current_user(), friends=friends)
     who = chosen_person()
     data = now.right_now(who) if who else None
     if not data:
@@ -805,9 +826,31 @@ def journey_page(sp):
                            next((p["display_name"] for p in stats.people() if p["id"] == who), who) + "'s")
 
 
+@app.errorhandler(400)
+def bad_request(_err):
+    """Usually a form from a page that was open from before the last login (its hidden security
+    code no longer matches), or a double-click. Reloading fixes it."""
+    return render_template("error.html", title="That page was out of date",
+                           message="This usually means the page was open from before you last logged in, or a button "
+                                   "was pressed twice. Go back, reload the page (Ctrl+F5) and try again."), 400
+
+
+@app.errorhandler(500)
+def server_error(_err):
+    return render_template("error.html", title="Something broke on our side",
+                           message="The site hit an error working that out. Try again in a minute; if it keeps "
+                                   "happening, tell Jack which page it was."), 500
+
+
 @app.errorhandler(404)
 def not_found(err):
     return render_template("error.html", message="Nothing here: that song, artist or page isn't in this person's history."), 404
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Some browsers ask for /favicon.ico whatever the page says: send them the SVG one."""
+    return redirect(url_for("static", filename="favicon.svg"), code=301)
 
 
 @app.route("/map/world.svg")

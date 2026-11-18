@@ -15,6 +15,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 import entity
 from db import connect
 from entity import fmt_date, local_ts
@@ -361,6 +363,7 @@ def compare(me, other, period=None):
 
 
 @lru_cache(maxsize=16)
+@disk_cached(versions=2)
 def _compare(me, other, period, _latest_me, _latest_other):
     ta, tb = entity.timeline(me), entity.timeline(other)
     shared_lo, shared_hi, years = periods(me, other)
@@ -481,6 +484,7 @@ def _compare(me, other, period, _latest_me, _latest_other):
 # ------------------------------------------------------------------ one song or artist, side by side
 
 @lru_cache(maxsize=8)
+@disk_cached(versions=1)
 def _song_index(user_id, _latest):
     """(lower-case name, artist) -> song index in this person's timeline, to find 'the same song' across people."""
     tl = entity.timeline(user_id)

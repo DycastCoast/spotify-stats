@@ -186,6 +186,10 @@ def migrate(conn):
     # "What I'm playing right now" is opt-in too: 0 = only you see it, 1 = friends can.
     if "share_playing" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN share_playing INTEGER NOT NULL DEFAULT 0")
+    # Goes up by one whenever someone's plays are DELETED, so the page caches notice
+    # (they're keyed on the newest play, which a delete doesn't change). See stats.latest_play_id.
+    if "data_version" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN data_version INTEGER NOT NULL DEFAULT 0")
 
 
 def shares_trips(user_id):
@@ -197,6 +201,12 @@ def shares_trips(user_id):
 def set_share_trips(user_id, on):
     with connect() as conn:
         conn.execute("UPDATE users SET share_trips = ? WHERE id = ?", (1 if on else 0, user_id))
+
+
+def bump_data_version(user_id):
+    """Call after deleting someone's plays: every page worked out from the old data is redone."""
+    with connect() as conn:
+        conn.execute("UPDATE users SET data_version = data_version + 1 WHERE id = ?", (user_id,))
 
 
 def shares_playing(user_id):

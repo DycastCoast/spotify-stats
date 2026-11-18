@@ -1486,3 +1486,18 @@ kbd { font: inherit; font-size: .8em; padding: 1px 5px; border: 1px solid var(--
   color: var(--muted); font-size: 1.2rem; line-height: 1; cursor: pointer; }
 .map-close:hover { color: var(--text); background: var(--surface-hover); }
 .map-card h3 { padding-right: 24px; }
+
+/* Error and welcome pages */
+.error-hero, .welcome { padding: 48px 0 24px; max-width: 680px; margin: 0 auto; text-align: center; }
+.error-hero h1, .welcome h1 { font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3rem); margin: 4px 0 10px; }
+.error-hero p, .welcome p { color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+.error-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; justify-content: center; }
+.button.ghost { background: none; border: 1px solid var(--border); color: var(--text); }
+.button.ghost:hover { border-color: var(--accent); }
+.welcome-steps .card { position: relative; }
+.step-num { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+  color: #0b0b0b; font-weight: 700; margin-bottom: 8px; }
+.welcome-friends { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.going-into { margin: 4px 0 0; font-size: .92rem; color: var(--muted); }
+.going-into b { color: var(--accent); }
+.going-into.big { font-size: 1.05rem; color: var(--text); margin-bottom: 8px; }

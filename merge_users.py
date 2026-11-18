@@ -28,6 +28,7 @@ with connect() as conn:
     moved = conn.execute("UPDATE OR IGNORE plays SET user_id = ? WHERE user_id = ?", (dst, src)).rowcount
     duplicates = conn.execute("DELETE FROM plays WHERE user_id = ?", (src,)).rowcount
     conn.execute("DELETE FROM users WHERE id = ?", (src,))
+    conn.execute("UPDATE users SET data_version = data_version + 1 WHERE id = ?", (dst,))   # pages redo their sums
     # All in one transaction: if anything above failed, none of it is saved.
 
 print(f"Moved {moved:,} of {before:,} plays from {src} to {dst}"

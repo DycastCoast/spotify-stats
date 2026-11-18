@@ -12,6 +12,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from functools import lru_cache
 
+from diskcache import disk_cached
+
 import entity
 import journey
 from entity import fmt_date, local_ts, timeline
@@ -33,6 +35,7 @@ def right_now(user_id):
 
 
 @lru_cache(maxsize=4)
+@disk_cached(versions=1)
 def _right_now(user_id, _latest):
     tl = timeline(user_id)
     listened = [i for i in range(len(tl.track)) if tl.listened(i)]
