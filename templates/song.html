@@ -19,6 +19,7 @@
 
 {% set vs_url = url_for('vs_panel', kind='song', track=s.track, who=who) %}
 {% include "_vs_button.html" %}
+<p class="like-this"><a class="button ghost" href="{{ url_for('playlist_page', kind='like', track=s.track) }}">More like this →</a></p>
 
 <section class="tiles">
   {% for label, value in s.tiles %}

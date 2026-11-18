@@ -11,8 +11,9 @@ from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
 # Least privilege: read-only access to top items, recently played, and the song playing
-# right now. Nothing else. (Adding a permission here means everyone logs in once more.)
-SCOPES = "user-top-read user-read-recently-played user-read-currently-playing"
+# right now, plus creating PRIVATE playlists (Playlists page: "Save to Spotify"). Nothing else.
+# (Adding a permission here means everyone logs in once more.)
+SCOPES = "user-top-read user-read-recently-played user-read-currently-playing playlist-modify-private"
 
 
 def make_oauth(cache_handler, state=None):

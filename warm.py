@@ -14,7 +14,7 @@ TIME_LIMIT_S = 240          # stop starting new pages after this, so the request
 
 
 def warm():
-    import compare, journey, now, skips, stats
+    import compare, journey, now, playlists, skips, stats
     started, done = time.time(), []
     people = [p["id"] for p in stats.people()]
     jobs = []
@@ -23,7 +23,8 @@ def warm():
                  ("overview", lambda p=p: stats.overview(p)),
                  ("found you", lambda p=p: stats.discovery(p, None, stats.latest_play_id(p))),
                  ("journey", lambda p=p: journey.journey(p, "broad")),
-                 ("skips", lambda p=p: skips.skips(p))]
+                 ("skips", lambda p=p: skips.skips(p)),
+                 ("moods", lambda p=p: playlists.moods(p, 2))]
     for a in people:
         for b in people:
             if a != b:

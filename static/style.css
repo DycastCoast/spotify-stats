@@ -1501,3 +1501,83 @@ kbd { font: inherit; font-size: .8em; padding: 1px 5px; border: 1px solid var(--
 .going-into { margin: 4px 0 0; font-size: .92rem; color: var(--muted); }
 .going-into b { color: var(--accent); }
 .going-into.big { font-size: 1.05rem; color: var(--text); margin-bottom: 8px; }
+
+/* Playlists */
+.pl-now { display: flex; gap: 20px; align-items: center; text-decoration: none; color: var(--text); margin-bottom: 16px; }
+.pl-now:hover { border-color: var(--accent); }
+.pl-now-text { display: grid; gap: 4px; min-width: 0; }
+.pl-now-title { font-family: var(--font-display); font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 700; line-height: 1.15; }
+.pl-moods-head { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.pl-slider { display: grid; gap: 2px; min-width: 200px; text-align: right; }
+.pl-slider label { font-weight: 600; color: var(--accent); }
+.pl-slider input[type=range] { accent-color: var(--accent); width: 100%; }
+.mood-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px 16px; }
+.mood-grid:not(.all) .mood.extra { display: none; }
+.mood { display: grid; gap: 6px; align-content: start; }
+.mood-link { display: grid; gap: 8px; color: var(--text); text-decoration: none; }
+.mood-link .mosaic { width: 100%; height: auto; aspect-ratio: 1; border-radius: 10px; }
+.mood-link:hover .mood-name { color: var(--accent); }
+.mood-name { font-weight: 700; line-height: 1.25; }
+.mood-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-hover); color: var(--muted); border: 1px solid var(--border); }
+.mood-rename summary { cursor: pointer; font-size: .78rem; color: var(--muted); list-style: none; }
+.mood-rename summary::-webkit-details-marker { display: none; }
+.mood-rename summary:hover { color: var(--text); }
+.mood-rename form { display: flex; gap: 6px; margin-top: 6px; }
+.mood-rename input, .pl-search input, .pl-season select { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 10px; font: inherit; min-width: 0; flex: 1; }
+.link-btn { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 10px 0 0; }
+.pl-search { display: grid; gap: 8px; }
+.pl-results, .pl-links { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.pl-results a, .pl-links a { display: grid; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
+.pl-results a:hover, .pl-links a:hover { background: var(--surface-hover); }
+.pl-links a .small { color: var(--muted); }
+.pl-season { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.pl-friends { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.pl-friends li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pl-friends b { min-width: 90px; }
+.pl-group { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.pl-hero { display: flex; gap: 28px; align-items: flex-end; padding: 32px 0 22px; }
+.mosaic.huge { width: 200px; height: 200px; flex: none; border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.pl-hero h1 { font-family: var(--font-display); font-size: clamp(1.9rem, 4.5vw, 3.2rem); margin: 4px 0 6px; line-height: 1.05; }
+.pl-hero p { color: var(--muted); margin: 0 0 10px; }
+.pl-hero .hero-kicker { text-decoration: none; }
+.pl-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.pl-length a { margin-left: 6px; color: var(--muted); }
+.pl-length a.on { color: var(--accent); font-weight: 700; }
+.pl-list { list-style: none; padding: 8px; margin: 0 0 20px; }
+.pl-list li { display: grid; grid-template-columns: 28px 44px minmax(0, 1fr) minmax(0, 0.8fr) 24px; gap: 12px; align-items: center;
+  padding: 6px 8px; border-radius: 8px; }
+.pl-list li:hover { background: var(--surface-hover); }
+.pl-num { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pl-art { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: rgba(var(--accent-rgb), .12); }
+.pl-song { display: grid; min-width: 0; }
+.pl-song a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.pl-song a.small { color: var(--muted); }
+.pl-note { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-open { color: var(--muted); text-decoration: none; text-align: center; }
+.pl-open:hover { color: var(--accent); }
+.like-this { margin: -6px 0 16px; }
+@media (max-width: 700px) {
+  .pl-hero { flex-direction: column; align-items: flex-start; gap: 16px; padding-top: 20px; }
+  .mosaic.huge { width: 150px; height: 150px; }
+  .pl-list li { grid-template-columns: 22px 40px minmax(0, 1fr) 20px; }
+  .pl-note { grid-column: 3 / 4; margin-top: -6px; }
+  .pl-slider { text-align: left; }
+  .mood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Right now: discovering or on the classics */
+.mode-line { font-size: 1.02rem; line-height: 1.55; margin: 0 0 14px; }
+.mode-line b { color: var(--accent); }
+.mode-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.mode-tile .small { color: var(--muted); }
+.discovery.mode-exploring .mode-tile.k0, .discovery.mode-classics .mode-tile.k2 { border-color: rgba(var(--accent-rgb), .6); }
+.trendline { width: 100%; height: auto; display: block; overflow: visible; }
+.trendline .grid { stroke: var(--border); stroke-width: 1; }
+.trendline .overall { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.trendline .tick { font-size: 12px; fill: var(--muted); }
+.trendline .hover-col { fill: transparent; }
+.trendline .hover-col:hover { fill: rgba(255, 255, 255, 0.05); }
+.mode-lists h3 { font-size: .95rem; margin: 14px 0 8px; }
+@media (max-width: 700px) { .mode-tiles { grid-template-columns: 1fr; } }

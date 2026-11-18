@@ -8,6 +8,7 @@ Your listening right now: the last couple of weeks, compared with your usual.
 Works with live tracking data too: none of it needs skip or device information.
 """
 import math
+import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -23,6 +24,76 @@ DAY = 86400
 REPEAT_DAYS = 14
 RECENT_DAYS = 30
 USUAL_DAYS = 365
+
+
+NEW_DAYS = 30             # a song is "new" for 30 days after you first heard it
+CLASSIC_DAYS = 365        # ...and a "classic" once you've known it for over a year
+WARMUP_DAYS = 180         # at the start of anyone's history EVERYTHING looks new: leave it out of "usual"
+
+
+def discovery_mode(tl, listened, now):
+    """Are you discovering or sitting on classics? Every listen is labelled by how long the person
+    had known that song at the time: new (< 30 days), this year (< 1 year) or classic (1 year+).
+    Last 30 days vs their usual month, plus a month-by-month line of the "new" share."""
+    first_ever = tl.end[listened[0]]
+    artist_first = {}
+    for i in listened:
+        artist_first.setdefault(tl.track_info[tl.track[i]][1], tl.end[i])
+    months = defaultdict(lambda: [0, 0, 0])            # (year, month) -> ms new / this year / classic
+    recent = [0, 0, 0]
+    new_songs, classic_songs = Counter(), Counter()
+    for i in listened:
+        t, e, ms = tl.track[i], tl.end[i], tl.ms[i]
+        age = e - tl.end[tl.first_listen[t]]
+        kind = 0 if age <= NEW_DAYS * DAY else 1 if age <= CLASSIC_DAYS * DAY else 2
+        if e - first_ever >= WARMUP_DAYS * DAY:
+            d = datetime.fromtimestamp(e, LOCAL_TZ)
+            months[(d.year, d.month)][kind] += ms
+        if e >= now - RECENT_DAYS * DAY:
+            recent[kind] += ms
+            if kind == 0:
+                new_songs[t] += ms
+            elif kind == 2:
+                classic_songs[t] += ms
+    total = sum(recent)
+    if total < 3 * 3_600_000:                          # under 3 hours in the last month: nothing to say
+        return None
+    share = [round(100 * x / total) for x in recent]
+    full = sorted(k for k, v in months.items() if sum(v) >= 3_600_000)
+    if len(full) < 4:
+        return None
+    usual = [statistics.median(100 * months[k][j] / sum(months[k]) for k in full) for j in range(3)]
+    if share[0] >= max(usual[0] * 1.4, usual[0] + 8):
+        mode, line = "exploring", "You're in discovery mode"
+    elif share[2] >= usual[2] + 10 and share[0] <= usual[0] * 0.7:
+        mode, line = "classics", "You're sitting on the classics"
+    else:
+        mode, line = "balanced", "A balanced month"
+    ratio = share[0] / usual[0] if usual[0] else None
+
+    def song(t, ms, kind):
+        name, artist, _ = tl.track_info[t]
+        first = datetime.fromtimestamp(tl.end[tl.first_listen[t]], LOCAL_TZ)
+        if kind == "new":
+            brand_new = now - artist_first.get(artist, 0) <= NEW_DAYS * DAY
+            note = "new artist" if brand_new else f"artist first heard in {datetime.fromtimestamp(artist_first[artist], LOCAL_TZ).year}"
+        else:
+            note = f"first heard {first:%b %Y}"
+        return {"name": name, "artist": artist, "track": tl.track_ids[t], "minutes": round(ms / 60000), "note": note}
+
+    new_artist_ms = sum(ms for t, ms in new_songs.items()
+                        if now - artist_first.get(tl.track_info[t][1], 0) <= NEW_DAYS * DAY)
+    series = full[-24:]
+    return {
+        "mode": mode, "line": line, "share": share, "usual": [round(u) for u in usual],
+        "ratio": ratio, "new_songs_count": len(new_songs),
+        "new_artist_share": round(100 * new_artist_ms / recent[0]) if recent[0] else 0,
+        "new": [song(t, ms, "new") for t, ms in new_songs.most_common(5)],
+        "classics": [song(t, ms, "classic") for t, ms in classic_songs.most_common(5)],
+        "trend": {"values": [round(100 * months[k][0] / sum(months[k]), 1) for k in series],
+                  "labels": [datetime(y, m, 1).strftime("%b %Y") for y, m in series],
+                  "usual": usual[0]},
+    }
 
 
 def overlap(a, b):
@@ -206,5 +277,6 @@ def _right_now(user_id, _latest):
         "hours": {"late_now": round(late_now), "late_usual": round(late_usual),
                   "mid_now": mid_now, "mid_usual": mid_usual, "profile": profile},
         "finds": finds[:8], "finds_count": len(finds),
+        "discovery": discovery_mode(tl, listened, now),
         "sticking": sum(1 for f in finds if f["sticking"]), "new_songs": len(new_songs),
     }

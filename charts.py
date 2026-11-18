@@ -77,3 +77,21 @@ def hour_lines(profile, w=960, h=220, top=14, left=14, right=14, bottom_pad=26):
     return {"w": w, "h": h, "bottom": bottom, "top": top, "now": smooth_points(now, bottom),
             "usual": smooth_points(usual, bottom), "cols": cols,
             "ticks": [(f"{hr:02d}", round(x(hr), 1)) for hr in (0, 3, 6, 9, 12, 15, 18, 21)]}
+
+
+def trend_line(trend, w=720, h=170, top=16, left=34, right=16, bottom_pad=24):
+    """A month-by-month smooth line with a dashed "usual" line. trend: {"values", "labels", "usual"}."""
+    values, labels, usual = trend["values"], trend["labels"], trend["usual"]
+    bottom = h - bottom_pad
+    peak = max(values + [usual]) * 1.15 or 1
+    n = len(values)
+    x = lambda i: left + (w - left - right) * (i / (n - 1) if n > 1 else 0.5)
+    y = lambda v: bottom - (bottom - top) * v / peak
+    pts = [(x(i), y(v)) for i, v in enumerate(values)]
+    step = (w - left - right) / max(1, n - 1)
+    cols = [{"x": round(x(i) - step / 2, 1), "w": round(step, 1), "tip": f"{labels[i]}: {values[i]:.0f}% new music"}
+            for i in range(n)]
+    ticks_y = [(f"{v}%", round(y(v), 1)) for v in range(0, int(peak) + 1, 10 if peak <= 60 else 20)]
+    return {"w": w, "h": h, "bottom": bottom, "line": smooth_points(pts, bottom), "usual_y": round(y(usual), 1),
+            "cols": cols, "ticks_y": ticks_y, "left": left, "right": w - right,
+            "ticks_x": [(labels[i], round(x(i), 1)) for i in sorted({0, n // 2, n - 1})]}

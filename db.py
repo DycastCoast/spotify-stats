@@ -220,9 +220,19 @@ def set_share_playing(user_id, on):
         conn.execute("UPDATE users SET share_playing = ? WHERE id = ?", (1 if on else 0, user_id))
 
 
+MOOD_NAMES_SQL = """
+CREATE TABLE IF NOT EXISTS mood_names (   -- names people gave their mood groups (playlists.py)
+    user_id   TEXT NOT NULL,
+    level     INTEGER NOT NULL,
+    signature TEXT NOT NULL,             -- JSON list of the group's 6 most central song IDs
+    name      TEXT NOT NULL
+)"""
+
+
 def init_db():
     with connect() as conn:
         conn.executescript(SCHEMA)
+        conn.execute(MOOD_NAMES_SQL)
         migrate(conn)
         conn.executescript(VIEWS)
 

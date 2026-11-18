@@ -23,6 +23,7 @@ import compare
 import entity
 import journey
 import now
+import playlists
 import nowplaying
 import poller
 import scheduler
@@ -100,8 +101,10 @@ def login_required(view):
 import charts
 import geo
 app.add_template_filter(charts.smooth_bars, "smooth_bars")
+app.add_template_filter(lambda songs: playlists.covers_of(songs), "covers")
 app.jinja_env.globals.update(geo_outline=geo.outline, geo_size=(geo.WIDTH, geo.HEIGHT))
 app.add_template_filter(charts.hour_lines, "hour_lines")
+app.add_template_filter(charts.trend_line, "trend_line")
 
 
 @app.template_filter("map_pins")
@@ -795,6 +798,121 @@ def now_share(sp):
         abort(400)
     set_share_playing(session["user_id"], request.form.get("on") == "1")
     return redirect(url_for("now_page") + "#playing")
+
+
+# ------------------------------------------------------------------ playlists
+
+PLAYLIST_ARGS = ("kind", "level", "id", "track", "new", "with", "year", "season", "n")
+
+
+def playlist_for(me, args):
+    """Work out the playlist an address asks for (?kind=...). None if the request doesn't make sense.
+    Everything is checked against allowed values: people must be on the site, IDs must look right."""
+    kind = args.get("kind", "")
+    limit = int(args["n"]) if args.get("n") in ("20", "30", "50") else 30
+    level = int(args["level"]) if args.get("level") in ("1", "2", "3", "4") else 2
+    others = {p["id"] for p in stats.people()} - {me}
+    if kind == "mood":
+        return playlists.mood_playlist(me, level, args.get("id", ""), limit)
+    if kind == "now":
+        return playlists.right_now(me, level, limit=limit)
+    if kind == "like":
+        track = args.get("track", "")
+        return playlists.like(me, track, only_new=args.get("new") == "1", limit=limit) if SONG_ID.fullmatch(track) else None
+    if kind in ("blend", "wayin"):
+        friend = args.get("with", "")
+        if friend not in others:
+            return None
+        return (playlists.blend if kind == "blend" else playlists.way_in)(me, friend, limit)
+    if kind == "group":
+        friends = [f for f in args.get("with", "").split(",") if f in others][:4]
+        if not friends:
+            return None
+        return playlists.group_mix(me, friends, limit) if len(friends) > 1 else playlists.blend(me, friends[0], limit)
+    if kind == "forgotten":
+        return playlists.forgotten(me, limit)
+    if kind == "comfort":
+        return playlists.comfort(me, limit)
+    if kind == "season":
+        year, season = args.get("year", ""), args.get("season", "")
+        if year.isdigit() and season in ("winter", "spring", "summer", "autumn"):
+            return playlists.season(me, int(year), season, limit)
+    return None
+
+
+def playlist_args():
+    """The query, tidied: several ?with= boxes become one comma list, and a season pick "2022:summer" splits."""
+    args = {k: request.args.get(k, "") for k in PLAYLIST_ARGS if request.args.get(k)}
+    if len(request.args.getlist("with")) > 1:
+        args["with"] = ",".join(request.args.getlist("with"))
+    if ":" in request.args.get("pick", ""):
+        args["year"], args["season"] = request.args["pick"].split(":", 1)
+    return args
+
+
+@app.route("/playlists")
+@login_required
+def playlists_page(sp):
+    """Playlists made from how you listen: moods, right now, more like this, friends, time machine."""
+    me = session["user_id"]
+    if stats.latest_play_id(me) is None:
+        return render_template("welcome.html", user=sp.current_user(),
+                               friends=[p for p in stats.people() if p["id"] != me])
+    level = int(request.args["level"]) if request.args.get("level") in ("1", "2", "3", "4") else 2
+    return render_template("playlists.html", user=sp.current_user(), who=me, level=level,
+                           level_names=playlists.LEVEL_NAMES, moods=playlists.moods(me, level),
+                           now=playlists.right_now(me, level, limit=4),
+                           friends=[p for p in stats.people() if p["id"] != me],
+                           seasons=playlists.seasons_available(me)[:24])
+
+
+@app.route("/playlist")
+@login_required
+def playlist_page(sp):
+    me = session["user_id"]
+    args = playlist_args()
+    pl = playlist_for(me, args)
+    if not pl:
+        abort(404)
+    return render_template("playlist.html", user=sp.current_user(), who=me, pl=pl, args=args,
+                           can_save=playlists.can_save(me), saved=session.pop("saved_playlist", None))
+
+
+@app.route("/playlist/save", methods=["POST"])
+@login_required
+def playlist_save(sp):
+    """Save the playlist into YOUR Spotify (private). It's worked out again here from the
+    address, never taken from the page, so the page can't slip other songs in."""
+    me = session["user_id"]
+    if request.form.get("csrf") != session.get("csrf"):
+        abort(400)
+    args = {k: request.form[k] for k in PLAYLIST_ARGS if request.form.get(k)}
+    pl = playlist_for(me, args)
+    if not pl or not pl["songs"]:
+        abort(404)
+    if not playlists.can_save(me):
+        return render_template("error.html", title="One more login needed",
+                               message="Saving to Spotify needs a permission the site didn't have when you last "
+                                       "logged in. Log out and back in once, then try again."), 403
+    try:
+        url = playlists.save_to_spotify(me, pl["title"], f"{pl['subtitle']} · made by Listening Stats",
+                                        [s["track"] for s in pl["songs"]])
+    except Exception as err:
+        return render_template("error.html", title="Spotify didn't save it",
+                               message=f"Spotify said no ({str(err)[:120]}). Try again in a minute."), 502
+    session["saved_playlist"] = url
+    return redirect(url_for("playlist_page", **args))
+
+
+@app.route("/moods/rename", methods=["POST"])
+@login_required
+def mood_rename(sp):
+    """Give one of your mood groups your own name (empty = back to the automatic one)."""
+    if request.form.get("csrf") != session.get("csrf"):
+        abort(400)
+    level = int(request.form["level"]) if request.form.get("level") in ("1", "2", "3", "4") else 2
+    playlists.rename(session["user_id"], level, request.form.get("id", ""), request.form.get("name", ""))
+    return redirect(url_for("playlists_page", level=level) + "#moods")
 
 
 @app.route("/trips/share", methods=["POST"])

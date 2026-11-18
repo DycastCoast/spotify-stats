@@ -6,3 +6,4 @@ pillow    # reads album covers to pick the page colour
 requests  # downloads album covers (spotipy uses it too)
 numpy     # fast maths on tables of numbers (finding eras on the Journey page)
 gunicorn  # the production web server in the container (runs app.py with several threads)
+networkx  # finds the "mood" groups in the played-together network (playlists.py)
