@@ -17,6 +17,7 @@ Playlist kinds (each returns {"title", "subtitle", "tags", "songs": [...]}):
 """
 import json
 import math
+import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime
 from functools import lru_cache
@@ -143,7 +144,69 @@ def _moods(user_id, level, _latest):
             continue
         groups.append(describe(tl, g, G, members, overall))
     groups.sort(key=lambda x: -x["plays"])
+    name_groups(groups)
     return groups
+
+
+# ------------------------------------------------------------------ naming
+
+# Name patterns per kind of thing that stands out. {song} is the group's signature song.
+PATTERNS = {
+    "style": ["{style}: {song} & co.", "{song}, {style_l}", "The {style_l} {song} mix"],
+    "artist": ["Mostly {artist}", "Deep in {artist}", "{artist} on repeat"],
+    "band": {"late night": ["{song} at 2am", "After midnight: {song}", "Up late with {song}"],
+             "morning": ["Morning {song}", "{song} for breakfast", "Waking up to {song}"],
+             "afternoon": ["Afternoon {song}", "{song}, mid-afternoon", "Long afternoons: {song}"],
+             "evening": ["Evenings with {song}", "{song} after dark", "Winding down: {song}"]},
+    "season": ["{Season} of {song}", "{song} {season}s", "{Season}: {song} & co."],
+    "weekend": ["Weekend {song}", "Saturdays with {song}", "{song}, weekends only"],
+    "weekday": ["Weekday {song}", "Monday-to-Friday {song}", "{song} on the commute"],
+    "year": ["{song}, '{yy}", "The '{yy} {song} era", "Back in '{yy}: {song}"],
+    "since": ["New lately: {song}", "Since '{yy}: {song} & co.", "The {song} phase"],
+    "era": ["{song} ('{yy}–'{yy2})", "Old rotation: {song}", "The {song} years"],
+    "noskip": ["Never skip {song}", "{song}, no skips", "All killer: {song}"],
+    "plain": ["{song} & co.", "The {song} mix", "{song} and friends", "Songs like {song}"],
+}
+
+_CUT = re.compile(r"\s*[\(\[][^)\]]*(feat|ft\.|with |prod|remaster|version|edit|mix|sped|slowed|nightcore)[^)\]]*[\)\]]"
+                  r"|\s+-\s+.*$", re.I)
+
+
+def short_title(name, limit=26):
+    """'Dream Space - Sped Up' -> 'Dream Space'; '911 / Mr. Lonely (feat. ...)' -> '911 / Mr. Lonely'."""
+    t = re.sub(r"\s+[.\-–~]+$", "", _CUT.sub("", name).strip()) or name.strip()
+    if len(t) > limit:
+        t = t[:limit].rsplit(" ", 1)[0].rstrip(",:;-/") + "…"
+    return t
+
+
+def name_groups(groups):
+    """Give each group a name from its signature song and the thing that most stands out about it,
+    spreading the kinds of name across the page so they don't all read the same."""
+    used_kind, used_song, taken = Counter(), set(), set()
+    cap = max(2, math.ceil(len(groups) / 4))  # no single kind of name on more than about a quarter
+    for g in groups:
+        song = next((short_title(n) for n, _ in g["song_names"] if short_title(n).lower() not in used_song),
+                    short_title(g["song_names"][0][0]))
+        used_song.add(song.lower())
+        options = [h for h in g["hooks"] if used_kind[h[0]] < cap] + [("plain", 0, None)]
+        for kind, _, value in options:
+            pats = PATTERNS[kind][value] if kind == "band" else PATTERNS[kind]
+            start = used_kind[kind]
+            for k in range(len(pats)):
+                pat = pats[(start + k) % len(pats)]
+                yy = value if isinstance(value, int) else value[0] if isinstance(value, tuple) else 0
+                name = pat.format(song=song, style=value, style_l=str(value).lower(), artist=value,
+                                  season=str(value), Season=str(value).capitalize(),
+                                  yy=f"{yy % 100:02d}", yy2=f"{value[1] % 100:02d}" if isinstance(value, tuple) else "")
+                if name.lower() not in taken:
+                    break
+            else:
+                continue
+            taken.add(name.lower())
+            used_kind[kind] += 1
+            g["auto_name"] = name
+            break
 
 
 def context_profile(tl, indexes):
@@ -216,8 +279,31 @@ def describe(tl, g, G, members, overall):
             style = label
             tags.insert(0, label)
             break
-    lead = style or when
-    auto = f"{lead} · {who}" if lead else who
+    # What stands out about this group, strongest first. name_groups() turns one of these into a name.
+    hooks = []
+    if style:
+        hooks.append(("style", 3.0, style))
+    lead_share = artists.most_common(1)[0][1] / (sum(artists.values()) or 1)
+    if lead_share >= 0.5:
+        hooks.append(("artist", 1.5 + lead_share, top_artists[0]))
+    if band_ratio >= 1.3:
+        hooks.append(("band", 1.0 + band_ratio - 1.3, best_band))
+    season_ratio = p["season"][best_season] / (overall["season"][best_season] or 1)
+    if season_ratio >= 1.35:
+        hooks.append(("season", 0.9 + season_ratio - 1.35, best_season))
+    if wk >= 1.25 or wk <= 0.75:
+        hooks.append(("weekend" if wk >= 1.25 else "weekday", 0.8 + abs(wk - 1) - 0.25, None))
+    if years:
+        if lo == hi:
+            hooks.append(("year", 1.1, lo))
+        elif hi >= latest_year and lo >= latest_year - 1:
+            hooks.append(("since", 0.9, lo))
+        elif hi < latest_year - 1:
+            hooks.append(("era", 0.85, (lo, hi)))
+    if p["skip"] is not None and overall["skip"] and p["skip"] <= overall["skip"] * 0.6:
+        hooks.append(("noskip", 0.7, None))
+    hooks.sort(key=lambda h: -h[1])
+    auto = who  # replaced by name_groups(); kept for anything that reads a group on its own
 
     # Rank songs: how central they are to the group, played a lot, not usually skipped.
     def score(t):
@@ -232,7 +318,8 @@ def describe(tl, g, G, members, overall):
             covers.append(tl.track_ids[t])
         if len(covers) == 4:
             break
-    return {"covers": covers,"auto_name": auto, "tags": tags, "artists": top_artists, "size": len(members),
+    return {"covers": covers, "auto_name": auto, "hooks": hooks,
+            "song_names": [(tl.track_info[t][0], tl.track_info[t][1]) for t in ranked[:8]], "tags": tags, "artists": top_artists, "size": len(members),
             "plays": sum(g["plays"][t] for t in members),
             "hours": round(sum(tl.track_ms[t] for t in members) / 3_600_000),
             "songs": ranked, "members_ids": [tl.track_ids[t] for t in ranked[:6]],
