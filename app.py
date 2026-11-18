@@ -97,6 +97,28 @@ def login_required(view):
 
 # ---------------------------------------------------------- template filters
 
+import charts
+import geo
+app.add_template_filter(charts.smooth_bars, "smooth_bars")
+app.jinja_env.globals.update(geo_outline=geo.outline, geo_size=(geo.WIDTH, geo.HEIGHT))
+app.add_template_filter(charts.hour_lines, "hour_lines")
+
+
+@app.template_filter("map_pins")
+def map_pins(trip_list):
+    """Just what the map's pins and cards need from each trip (the page's list has the rest)."""
+    out = []
+    for n, x in enumerate(trip_list, 1):
+        if not x.get("pin"):
+            continue
+        out.append({"n": n, "heading": x["heading"], "flags": "".join(flag(c) for c in x["stops"]),
+                    "dates": x["dates"], "days": x["days"], "year": x["year"], "hours": hours(x["hours"]),
+                    "artist": x["top_artist"], "song": x["trip_song"]["name"] if x.get("trip_song") else None,
+                    "song_artist": x["trip_song"]["artist"] if x.get("trip_song") else None,
+                    "covers": x.get("covers") or [], "pin": x["pin"], "route": x.get("route") or []})
+    return out
+
+
 @app.template_filter("duration")
 def duration(ms):
     """215000 -> '3:35'"""
@@ -786,6 +808,16 @@ def journey_page(sp):
 @app.errorhandler(404)
 def not_found(err):
     return render_template("error.html", message="Nothing here: that song, artist or page isn't in this person's history."), 404
+
+
+@app.route("/map/world.svg")
+def world_map():
+    """The world map behind the Trips page's pins (drawn once from static/geo; see geo.py).
+    Public and the same for everyone, so browsers may keep it for a week."""
+    import geo
+    response = app.response_class(geo.world_svg(), mimetype="image/svg+xml")
+    response.headers["Cache-Control"] = "public, max-age=604800"
+    return response
 
 
 @app.route("/art")

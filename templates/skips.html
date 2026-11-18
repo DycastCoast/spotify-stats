@@ -22,11 +22,15 @@
     <line class="grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
     <text class="tick" x="{{ c.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ v }}%</text>
   {% endfor %}
+  <line class="overall" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.overall_y }}" y2="{{ c.overall_y }}"/>
+  {% set L = c.bars | smooth_bars(c.bottom) %}
+  <path class="line-area" d="{{ L.area }}"/>
+  <path class="line" d="{{ L.line }}"/>
   {% for b in c.bars %}
-    <rect class="bar {{ 'above' if b.above }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3"/>
+    {% if c.bars | length <= 12 and b.h %}<circle class="line-pt {{ 'above' if b.above }}" cx="{{ b.x + b.w / 2 }}" cy="{{ b.y }}" r="4"/>{% endif %}
     {% if b.label %}<text class="tick" x="{{ b.cx }}" y="{{ c.h - 8 }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
   {% endfor %}
-  <line class="overall" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.overall_y }}" y2="{{ c.overall_y }}"/>
+  {% if L.last %}<circle class="line-dot" cx="{{ L.last[0] }}" cy="{{ L.last[1] }}" r="5"/>{% endif %}
   {% for b in c.bars %}<rect class="hover-col" x="{{ b.slot_x }}" y="0" width="{{ c.slot }}" height="{{ c.bottom }}" data-tip="{{ b.tip }}"/>{% endfor %}
 </svg>
 {% endif %}
@@ -53,7 +57,7 @@
   <div class="card-head card-head-row">
     <div>
       <h2>When {{ 'you' if you else 'they' }} skip</h2>
-      <p class="small">Share of songs skipped. Brighter bars are above {{ W }} overall rate (the dashed line).</p>
+      <p class="small">Share of songs skipped. Filled dots are above {{ W }} overall rate (the dashed line).</p>
     </div>
     <div class="seg-toggle" role="group" aria-label="By" data-part="0">
       <button type="button" data-value="year" class="active">By year</button>

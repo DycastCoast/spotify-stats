@@ -1,7 +1,7 @@
 {# Building blocks shared by the song and artist pages. Use with:
    {% import "macros.html" as m %} then {{ m.history(chart) }} etc. #}
 
-{# Plays per month as bars. One series, so one colour: the page's own. Hover a bar for its month. #}
+{# Plays per month as a smooth line. One series, so one colour: the page's own. Hover anywhere for that month. #}
 {% macro history(c, title, subtitle) %}
 <section class="card">
   <div class="card-head">
@@ -16,9 +16,10 @@
     {% for label, tx in c.x_ticks %}
       <text class="tick" x="{{ tx }}" y="{{ c.h - 8 }}">{{ label }}</text>
     {% endfor %}
-    {% for b in c.bars %}
-      <rect class="bar {{ 'peak' if b.peak }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="{{ 2 if b.w > 6 else 0 }}"/>
-    {% endfor %}
+    {% set L = c.bars | smooth_bars(c.bottom) %}
+    <path class="line-area" d="{{ L.area }}"/>
+    <path class="line" d="{{ L.line }}"/>
+    {% if L.peak %}<circle class="line-dot" cx="{{ L.peak[0] }}" cy="{{ L.peak[1] }}" r="5"/>{% endif %}
     {# wide invisible columns, so even a thin month is easy to hover #}
     {% for b in c.bars %}
       <rect class="hover-col" x="{{ b.slot_x }}" y="0" width="{{ c.slot_w }}" height="{{ c.bottom }}" data-tip="{{ b.tip }}"/>
@@ -59,7 +60,6 @@
               {% if s.artist %}<span class="rank-artist">{{ s.artist }}</span>{% endif %}
             </span>
             <span class="rank-fig">{{ s.fig }}</span>
-            <span class="meter-bar rank-bar"><span style="width: {{ s.bar }}%"></span></span>
           </li>
         {% endfor %}
       </ol>

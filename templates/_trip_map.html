@@ -1,0 +1,216 @@
+<script>
+  // The Trips map. The world is an SVG; moving and zooming changes its viewBox (which part of
+  // the world is in the frame). Pins are HTML on top, re-placed after every move, so they stay
+  // the same size on screen however far you zoom. Pins closer than MERGE pixels on screen join
+  // into one with a count, so Europe doesn't become a pile.
+  (() => {
+    const frame = document.getElementById("map-frame");
+    const data = document.getElementById("trip-data");
+    if (!frame || !data) return;
+    const svg = document.getElementById("map"), layer = document.getElementById("map-pins");
+    const card = document.getElementById("map-card"), route = document.getElementById("map-route");
+    const trips = JSON.parse(data.textContent);
+    const W = {{ geo_size[0] }}, H = {{ geo_size[1] }};
+    const MERGE = 40, MAX_ZOOM = 16;
+    const narrow = () => matchMedia("(max-width: 700px)").matches;
+    let view = {x: 0, y: 0, w: W, h: H};
+    let pinned = null;                                     // the card stays open after a click/tap
+
+    // ---------- the view (which part of the world is showing)
+    const frameSize = () => [frame.clientWidth || 1, frame.clientHeight || 1];
+    function fitted(v) {
+      // keep the view's shape the same as the frame's, and don't let it wander off the world
+      const [fw, fh] = frameSize();
+      let w = Math.min(Math.max(v.w, W / MAX_ZOOM), W * 1.05);
+      let h = w * fh / fw;
+      if (h > H * 1.6) { h = H * 1.6; w = h * fw / fh; }
+      const cx = Math.min(Math.max(v.x + v.w / 2, 0), W), cy = Math.min(Math.max(v.y + v.h / 2, 0), H);
+      return {x: cx - w / 2, y: cy - h / 2, w, h};
+    }
+    function apply() {
+      view = fitted(view);
+      svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+      draw();
+    }
+    const toScreen = ([x, y]) => { const [fw, fh] = frameSize(); return [(x - view.x) / view.w * fw, (y - view.y) / view.h * fh]; };
+    const toWorld = (sx, sy) => { const [fw, fh] = frameSize(); return [view.x + sx / fw * view.w, view.y + sy / fh * view.h]; };
+    function zoomAt(factor, sx, sy) {
+      const [wx, wy] = toWorld(sx, sy);
+      const w = view.w / factor, h = view.h / factor;
+      const [fw, fh] = frameSize();
+      view = {x: wx - sx / fw * w, y: wy - sy / fh * h, w, h};
+      apply();
+    }
+    function fitAll() {
+      const pts = trips.map(t => t.pin);
+      if (!pts.length) { view = {x: 0, y: 0, w: W, h: H}; return apply(); }
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+      let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const [fw, fh] = frameSize();
+      let w = Math.max((x1 - x0) * 1.35, W / 7), h = Math.max((y1 - y0) * 1.5, w * fh / fw);
+      w = Math.max(w, h * fw / fh);
+      view = {x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h};
+      apply();
+    }
+
+    // ---------- pins
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    function mosaic(covers, cls) {
+      const box = el("span", "mosaic " + cls);
+      const list = covers.length ? covers.slice(0, 4) : [null];
+      if (list.length < 4) box.classList.add("single");
+      (list.length < 4 ? list.slice(0, 1) : list).forEach(track => {
+        const img = el("img"); img.alt = "";
+        if (track) { img.dataset.artKind = "track"; img.dataset.artTrack = track; }
+        box.append(img);
+      });
+      return box;
+    }
+    const nodes = new Map();                               // cluster key -> its pin, reused between moves
+    function draw() {
+      const placed = [];
+      [...trips].sort((a, b) => b.days - a.days).forEach(t => {
+        const [sx, sy] = toScreen(t.pin);
+        const near = placed.find(c => Math.hypot(c.sx - sx, c.sy - sy) < MERGE);
+        if (near) near.trips.push(t); else placed.push({sx, sy, trips: [t]});
+      });
+      const [fw, fh] = frameSize();
+      const keep = new Set();
+      placed.forEach(c => {
+        const key = c.trips.map(t => t.n).sort((a, b) => a - b).join("-");
+        keep.add(key);
+        let pin = nodes.get(key);
+        if (!pin) {
+          pin = el("button", "pin");
+          pin.type = "button";
+          pin.append(mosaic(c.trips[0].covers, "small"));
+          if (c.trips.length > 1) pin.append(el("span", "pin-count", c.trips.length));
+          pin.setAttribute("aria-label", c.trips.length > 1 ? `${c.trips.length} trips` : `${c.trips[0].heading}, ${c.trips[0].dates}`);
+          const show = () => openCard(c.trips.length > 1 ? {group: c.trips} : c.trips[0], pin);
+          pin.addEventListener("pointerenter", e => { if (e.pointerType === "mouse" && !pinned) show(); });
+          pin.addEventListener("pointerleave", e => { if (e.pointerType === "mouse" && !pinned) closeCard(); });
+          pin.addEventListener("click", e => { e.stopPropagation(); show(); pinned = pin; });
+          layer.append(pin);
+          nodes.set(key, pin);
+          window.art && art.lazy(pin);
+        }
+        pin.style.transform = `translate(${c.sx}px, ${c.sy}px)`;
+        pin.hidden = c.sx < -40 || c.sy < -40 || c.sx > fw + 40 || c.sy > fh + 40;
+        pin._cluster = c;
+      });
+      for (const [key, pin] of nodes) if (!keep.has(key)) { if (pinned === pin) closeCard(); pin.remove(); nodes.delete(key); }
+      if (card._anchor && !card.hidden && card._anchor.isConnected) placeCard(card._anchor);
+    }
+
+    // ---------- the card
+    function tripCard(t) {
+      card.replaceChildren();
+      card.append(mosaic(t.covers, "big"));
+      const body = el("div", "map-card-body");
+      const h = el("h3"); h.append(el("span", "flag", t.flags), " " + t.heading);
+      body.append(h, el("p", "small", `${t.dates} · ${t.days} days`), el("p", "", `${t.hours} of music · most played: ${t.artist}`));
+      if (t.song) { const p = el("p", "small map-song"); p.append("Song of the trip: ", el("b", "", t.song), ` by ${t.song_artist}`); body.append(p); }
+      const go = el("a", "inline-link", "See the trip ↓"); go.href = `#trip-${t.n}`;
+      go.addEventListener("click", () => {
+        const target = document.getElementById(`trip-${t.n}`);
+        if (target && target.classList.contains("extra") && getComputedStyle(target).display === "none")
+          document.querySelector(".trips .more-btn")?.click();   // it's past the first few: show them all first
+      });
+      body.append(go);
+      card.append(body);
+      route.setAttribute("points", t.route.length > 1 ? t.route.map(p => p.join(",")).join(" ") : "");
+    }
+    function groupCard(list) {
+      card.replaceChildren();
+      const body = el("div", "map-card-body");
+      body.append(el("h3", "", `${list.length} trips here`));
+      const ul = el("ul", "map-group");
+      [...list].sort((a, b) => b.year - a.year).forEach(t => {
+        const b = el("button", "map-group-item"); b.type = "button";
+        const text = el("span"); text.append(el("b", "", `${t.flags} ${t.heading}`), el("small", "", t.dates));
+        b.append(mosaic(t.covers, "tiny"), text);
+        b.addEventListener("click", e => { e.stopPropagation(); tripCard(t); card.append(closeButton()); window.art && art.lazy(card); placeCard(card._anchor); });
+        const li = el("li"); li.append(b); ul.append(li);
+      });
+      body.append(ul);
+      card.append(body);
+      route.setAttribute("points", "");
+    }
+    function closeButton() {
+      const x = el("button", "map-close", "×"); x.type = "button"; x.setAttribute("aria-label", "Close");
+      x.addEventListener("click", e => { e.stopPropagation(); closeCard(); });
+      return x;
+    }
+    function openCard(item, anchor) {
+      item.group ? groupCard(item.group) : tripCard(item);
+      card.append(closeButton());
+      card.hidden = false;
+      card._anchor = anchor;
+      window.art && art.lazy(card);
+      placeCard(anchor);
+    }
+    function placeCard(anchor) {
+      if (narrow()) { card.style.transform = ""; return; }   // phones: the card sits under the map
+      const [fw, fh] = frameSize();
+      const c = anchor._cluster;
+      if (!c) return;
+      const cw = card.offsetWidth, ch = card.offsetHeight;
+      let x = c.sx + 30, y = c.sy - ch / 2;
+      if (x + cw > fw - 8) x = c.sx - 30 - cw;
+      x = Math.max(8, Math.min(x, fw - cw - 8));
+      y = Math.max(8, Math.min(y, fh - ch - 8));
+      card.style.transform = `translate(${x}px, ${y}px)`;
+    }
+    function closeCard() { card.hidden = true; pinned = null; card._anchor = null; route.setAttribute("points", ""); }
+
+    // ---------- moving and zooming
+    const pointers = new Map();
+    let last = null;
+    frame.addEventListener("pointerdown", e => {
+      if (e.target.closest(".pin, .map-card, .map-zoom")) return;
+      pointers.set(e.pointerId, [e.offsetX, e.offsetY]);
+      frame.setPointerCapture(e.pointerId);
+      last = null;
+    });
+    frame.addEventListener("pointermove", e => {
+      if (!pointers.has(e.pointerId)) return;
+      const r = frame.getBoundingClientRect();
+      pointers.set(e.pointerId, [e.clientX - r.left, e.clientY - r.top]);
+      const pts = [...pointers.values()];
+      if (pts.length === 1) {                                     // drag
+        const [x, y] = pts[0];
+        if (last && last.length === 1) {
+          const [fw, fh] = frameSize();
+          view.x -= (x - last[0][0]) / fw * view.w;
+          view.y -= (y - last[0][1]) / fh * view.h;
+          apply();
+          frame.classList.add("dragging");
+        }
+      } else if (pts.length === 2 && last && last.length === 2) { // pinch
+        const d = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
+        const d0 = Math.hypot(last[0][0] - last[1][0], last[0][1] - last[1][1]) || d;
+        zoomAt(d / d0, (pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2);
+      }
+      last = pts.map(p => [...p]);
+    });
+    const end = e => { pointers.delete(e.pointerId); last = null; setTimeout(() => frame.classList.remove("dragging"), 0); };
+    frame.addEventListener("pointerup", end);
+    frame.addEventListener("pointercancel", end);
+    // Plain scrolling keeps scrolling the page; Ctrl/⌘ + scroll (and trackpad pinch) zooms.
+    frame.addEventListener("wheel", e => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      zoomAt(Math.exp(-e.deltaY * 0.0025), e.offsetX, e.offsetY);
+    }, {passive: false});
+    frame.addEventListener("dblclick", e => { if (!e.target.closest(".pin, .map-card, .map-zoom")) zoomAt(2, e.offsetX, e.offsetY); });
+    frame.querySelectorAll("[data-zoom]").forEach(b => b.addEventListener("click", e => {
+      e.stopPropagation();
+      const [fw, fh] = frameSize();
+      if (b.dataset.zoom === "fit") fitAll(); else zoomAt(b.dataset.zoom === "in" ? 1.8 : 1 / 1.8, fw / 2, fh / 2);
+    }));
+    frame.addEventListener("click", e => { if (!frame.classList.contains("dragging") && !e.target.closest(".pin, .map-card")) closeCard(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeCard(); });
+    new ResizeObserver(() => apply()).observe(frame);
+    fitAll();
+  })();
+</script>

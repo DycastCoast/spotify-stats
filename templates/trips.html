@@ -48,27 +48,46 @@
   </details>
 </section>
 
-<div class="trips-top">
-  <section class="card">
-    <div class="card-head"><h2>Where you've been</h2></div>
-    <ul class="meters">
-      {% for c in t.countries %}
-        <li data-tip="{{ c.name }}: {{ c.trips }} trip{{ 's' if c.trips != 1 }}, {{ c.days }} days, first in {{ c.first }}">
-          <span class="meter-name"><span class="flag">{{ c.code | flag }}</span> {{ c.heading }}</span>
-          <span class="meter-bar"><span style="width: {{ c.bar }}%"></span></span>
-          <span class="meter-fig">{{ c.days }} d</span>
-        </li>
-      {% endfor %}
-    </ul>
-  </section>
-</div>
+<!-- The map: a pin per trip (its top 4 album covers), hover/tap for the trip -->
+{% set W, H = geo_size %}
+<section class="card tripmap" aria-label="Map of your trips">
+  <div class="card-head">
+    <h2>Where you've been</h2>
+    <p class="small">Each pin is a trip, made of its 4 most-played albums. Hover or tap one for the trip.
+      Drag to move, pinch or <kbd>Ctrl</kbd> + scroll to zoom. Pins close together merge until you zoom in.</p>
+  </div>
+  <div class="map-frame" id="map-frame">
+    <svg class="map" id="map" viewBox="0 0 {{ W }} {{ H }}" preserveAspectRatio="none" aria-hidden="true">
+      <image href="{{ url_for('world_map') }}" x="0" y="0" width="{{ W }}" height="{{ H }}"/>
+      <g class="visited">
+        {% for c in t.countries %}<path d="{{ geo_outline(c.code) }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+      </g>
+      {% if t.home_code %}<path class="home" d="{{ geo_outline(t.home_code) }}" vector-effect="non-scaling-stroke"/>{% endif %}
+      <polyline class="route" id="map-route" points="" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="map-pins" id="map-pins"></div>
+    <div class="map-card" id="map-card" hidden></div>
+    <div class="map-zoom">
+      <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+      <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" data-zoom="fit" aria-label="Show all trips">⤢</button>
+    </div>
+  </div>
+  <ul class="country-chips">
+    {% for c in t.countries %}
+      <li data-tip="{{ c.name }}: {{ c.trips }} trip{{ 's' if c.trips != 1 }}, first in {{ c.first }}"><span class="flag">{{ c.code | flag }}</span> {{ c.heading }} <span class="chip-fig">{{ c.days }} d</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{# The pins' data. tojson escapes everything, so trip names can't break out of the script tag. #}
+<script type="application/json" id="trip-data">{{ t.trips | map_pins | tojson }}</script>
 
 <!-- Every trip, newest first -->
 <section class="trips">
   <div class="more-wrap">
     {% for x in t.trips %}
       {% if loop.first or x.year != loop.previtem.year %}<h2 class="trip-year {{ 'extra' if loop.index > 6 }}">{{ x.year }}</h2>{% endif %}
-      <article class="card trip {{ 'extra' if loop.index > 6 }}">
+      <article class="card trip {{ 'extra' if loop.index > 6 }}" id="trip-{{ loop.index }}">
         <div class="trip-head">
           <img class="trip-art" alt="" data-art-kind="track" data-art-track="{{ (x.trip_song or x.top[0]).track }}">
           <div class="trip-title">
@@ -178,6 +197,7 @@
 
 {% block scripts %}
 {% include "_entity_scripts.html" %}
+{% include "_trip_map.html" %}
 <script>
   document.querySelectorAll(".hero-number[data-count]").forEach(el => motion.countUp(el));
   motion.reveal(".trip");

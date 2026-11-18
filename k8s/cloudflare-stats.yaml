@@ -1,15 +1,14 @@
-# Cloudflare: no extra login for the stats site (it has its own Spotify login).
-# The more specific host wins over the protection on the rest of dycast.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dycast-cloudflare-stats
+  name: dycast-cloudflare
   labels:
     montlab.app/cloudflare: 'true'
 data:
   cloudflare: |
     {"host": "dycast-stats.montlab.cc",
      "access": {"session_duration": "24h",
-                "policies": [{"name": "everyone", "decision": "bypass",
-                              "include": [{"everyone": {}}]}],
+                "policies": [{"name": "jack", "decision": "allow",
+                              "include": [{"email": {"email": "jackedwardsicoll@gmail.com"}},
+                                          {"email": {"email": "edubzboy@gmail.com"}}]}],
                 "bypass": false}}

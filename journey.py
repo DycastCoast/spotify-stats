@@ -21,6 +21,8 @@ numpy does the arithmetic on whole tables of numbers at once, which is what
 makes this take about a second instead of half a minute.
 """
 import math
+
+import charts
 from collections import Counter, defaultdict
 from datetime import datetime
 from functools import lru_cache
@@ -197,10 +199,12 @@ def length_text(months):
 
 
 def era_songs(tl, eras):
-    """Each era's top 3 songs, in one pass over the history."""
+    """Each era's top 3 songs, and the covers of its top 4 albums (for the album wall),
+    in one pass over the history."""
     bounds = [(datetime(e["lo"] // 12, e["lo"] % 12 + 1, 1, tzinfo=LOCAL_TZ).timestamp(),
                datetime((e["hi"] + 1) // 12, (e["hi"] + 1) % 12 + 1, 1, tzinfo=LOCAL_TZ).timestamp()) for e in eras]
     counts = [Counter() for _ in eras]
+    albums = [Counter() for _ in eras]
     e = 0
     for i in range(len(tl.track)):
         t = tl.end[i]
@@ -210,9 +214,21 @@ def era_songs(tl, eras):
             break
         if t >= bounds[e][0] and tl.ms[i] >= MIN_PLAY_MS:
             counts[e][tl.track[i]] += tl.ms[i]
-    for era, c in zip(eras, counts):
+            albums[e][tl.album[i]] += tl.ms[i]
+    for era, c, alb in zip(eras, counts, albums):
         era["songs"] = [{"name": tl.track_info[t][0], "artist": tl.track_info[t][1], "track": tl.track_ids[t],
                          "hours": ms / 3_600_000} for t, ms in c.most_common(3)]
+        covers = []
+        for a, _ in alb.most_common(8):
+            name, artist = tl.album_info[a]
+            # the album's cover comes from one of its songs: its most-played one in this era
+            best = max((t for t in c if tl.album_best.get(a) == t or tl.track_info[t][2] == name and tl.track_info[t][1] == artist),
+                       key=lambda t: c[t], default=None)
+            if best is not None and name:
+                covers.append({"track": tl.track_ids[best], "album": name, "artist": artist})
+            if len(covers) == 4:
+                break
+        era["covers"] = covers
 
 
 def transition(prev, nxt):
@@ -399,10 +415,10 @@ def artist_lines(months, eras, n=8):
             x = LEFT + pw * (m0 - keys[0] + 1.5) / len(keys)
             y = ROW - 4 - (ROW - 8) * share / top_share
             pts.append((round(x, 1), round(y, 1), share, m0))
-        line = " L".join(f"{x},{y}" for x, y, _, _ in pts)
-        area = f"M{pts[0][0]},{ROW} L{line} L{pts[-1][0]},{ROW} Z"
+        smooth = charts.smooth_points([(x, y) for x, y, _, _ in pts], ROW)    # smooth, never overshooting
+        line, area = smooth["line"], smooth["area"]
         peak_pt = max(pts, key=lambda p: p[2])
-        rows.append({"name": a, "area": area, "line": "M" + line,
+        rows.append({"name": a, "area": area, "line": line,
                      "peak": f"{100 * peak_pt[2]:.0f}%", "peak_when": month_label(peak_pt[3], True),
                      "px": peak_pt[0], "py": peak_pt[1],
                      "cols": [{"x": round(x - pw / len(quarter) / 2, 1), "w": round(pw / len(quarter), 1),

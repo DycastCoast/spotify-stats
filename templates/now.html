@@ -137,21 +137,26 @@
 <section class="card">
   <div class="card-head">
     <h2>{{ 'Your' if you else 'Their' }} hours lately</h2>
-    <p class="small">When in the day {{ 'you' if you else 'they' }}'ve listened over the last 30 days (bars) vs the year before (lines).
+    <p class="small">When in the day {{ 'you' if you else 'they' }}'ve listened over the last 30 days (bright line) vs the year before (grey).
       {% if hr.mid_now is not none and hr.mid_usual is not none %}
         {% set shift = (hr.mid_now - hr.mid_usual + 24 + 12) % 24 - 12 %}
         Half the day's listening is done by <b>{{ '%02d' % hr.mid_now }}:00</b>{% if shift >= 2 %}, {{ shift }} hours later than usual ({{ '%02d' % hr.mid_usual }}:00): the day's shifted late.{% elif shift <= -2 %}, {{ -shift }} hours earlier than usual ({{ '%02d' % hr.mid_usual }}:00).{% else %}, about the usual time.{% endif %}
       {% endif %}</p>
   </div>
-  <div class="hourbars">
-    {% for x in hr.profile %}
-      <span class="hb" data-tip="{{ '%02d' % x.hour }}:00 · {{ '%.1f' % x.now }}% of the last 30 days, {{ '%.1f' % x.usual }}% usually">
-        <span class="hb-now" style="height: {{ x.h_now }}%"></span>
-        <span class="hb-usual" style="bottom: {{ x.h_usual }}%"></span>
-        <span class="hb-label">{{ '%02d' % x.hour if x.hour % 3 == 0 else '' }}</span>
-      </span>
+  {% set H = hr.profile | hour_lines %}
+  <svg class="hourlines" viewBox="0 0 {{ H.w }} {{ H.h }}" role="img" aria-label="Listening by hour: last 30 days vs the year before">
+    <line class="grid" x1="0" x2="{{ H.w }}" y1="{{ H.bottom }}" y2="{{ H.bottom }}"/>
+    <path class="line usual" d="{{ H.usual.line }}"/>
+    <path class="line-area" d="{{ H.now.area }}"/>
+    <path class="line" d="{{ H.now.line }}"/>
+    {% if H.now.peak %}<circle class="line-dot" cx="{{ H.now.peak[0] }}" cy="{{ H.now.peak[1] }}" r="5"/>{% endif %}
+    {% for label, tx in H.ticks %}<text class="tick" x="{{ tx }}" y="{{ H.h - 4 }}" text-anchor="middle">{{ label }}</text>{% endfor %}
+    {% for x in hr.profile %}{% set col = H.cols[loop.index0] %}
+      <rect class="hover-col" x="{{ col.x }}" y="0" width="{{ col.w }}" height="{{ H.bottom }}"
+            data-tip="{{ '%02d' % x.hour }}:00 · {{ '%.1f' % x.now }}% of the last 30 days, {{ '%.1f' % x.usual }}% usually"/>
     {% endfor %}
-  </div>
+  </svg>
+  <ul class="legend"><li><span class="swatch line-now"></span>Last 30 days</li><li><span class="swatch line-usual"></span>The year before</li></ul>
 </section>
 
 <!-- Fresh finds -->

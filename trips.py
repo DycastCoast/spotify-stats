@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 
 import entity
+import geo
 from compare import COUNTRIES
 from db import connect
 from entity import local_ts
@@ -217,6 +218,7 @@ def soundtrack(tl, trip, first_listen_artist, artist_plays):
         "per_day_min": per_day / 60000,
         "vs_usual": per_day / usual if usual else None,
         "top": [song(t) for t, _ in songs.most_common(5)],
+        "covers": covers(tl, songs),
         "trip_song": ({**song(trip_song), "before": before[trip_song]} if trip_song is not None else None),
         "top_artist": artists.most_common(1)[0][0],
         "top_artist_track": tl.track_ids[tl.artist_best[artists.most_common(1)[0][0]]],
@@ -224,6 +226,21 @@ def soundtrack(tl, trip, first_listen_artist, artist_plays):
                   for a in found[:3]],
         "found_count": len(found),
     }
+
+
+def covers(tl, songs, n=4):
+    """Up to n different albums from the trip's most-played songs: their covers make the
+    trip's 2×2 picture on the map (one song per album, so it's 4 albums, not 4 songs of one)."""
+    out, seen = [], set()
+    for t, _ in songs.most_common(60):
+        name, artist, album = tl.track_info[t]
+        key = ((album or name).lower(), artist)
+        if key not in seen:
+            seen.add(key)
+            out.append(tl.track_ids[t])
+        if len(out) == n:
+            break
+    return out
 
 
 def trips(user_id):
@@ -260,6 +277,8 @@ def _trips(user_id, _latest):
             "long": n_days >= LONG_STAY_DAYS,
             "came_from": country_name(t["came_from"]) if t.get("came_from") else None,
             "came_from_code": t.get("came_from"),
+            "pin": geo.pin(t["country"]),
+            "route": [p for p in (geo.pin(c) for c in t["stops"]) if p] if len(t["stops"]) > 1 else [],
             **s,
         })
 
