@@ -6,9 +6,8 @@ metadata:
     montlab.app/cloudflare: 'true'
 data:
   cloudflare: |
-    {"host": "dycast-stats.montlab.cc",
+    {"host": "dycast-hello.montlab.cc",
      "access": {"session_duration": "24h",
                 "policies": [{"name": "jack", "decision": "allow",
-                              "include": [{"email": {"email": "jackedwardsicoll@gmail.com"}},
-                                          {"email": {"email": "edubzboy@gmail.com"}}]}],
-                "bypass": false}}
+                              "include": [{"email": {"email": "jackedwardsicoll@gmail.com"}}]}]},
+     "extra_hosts": [{"host": "dycast-stats.montlab.cc"}]}
