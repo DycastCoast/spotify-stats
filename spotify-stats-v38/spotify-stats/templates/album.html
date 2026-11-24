@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ al.name }} · Listening Stats{% endblock %}
+{% block content %}
+{% set og = al.one_go %}
+
+<!-- The album: cover (which also sets the page colour), name, artist, and where it ranks -->
+<section class="entity-hero {{ 'themed' if page_theme }}">
+  <figure class="hero-cover" id="hero-cover" data-art-kind="track" data-art-track="{{ al.art_track }}">
+    <div class="cover-frame big"><img alt="Cover of {{ al.name }}" {% if cover_url %}src="{{ cover_url }}"{% endif %}></div>
+  </figure>
+  <div class="entity-text">
+    <span class="hero-kicker">Album · <a href="{{ url_for('artist_page', name=al.artist, who=who) }}">{{ al.artist }}</a>{% if al.release %} · {{ al.release[:4] }}{% endif %}{% if whose[0] != "Your" %} · in {{ whose[0] }} history{% endif %}</span>
+    <h1 class="entity-name {{ 'long' if al.name | length > 14 }} {{ 'very-long' if al.name | length > 40 }}">{{ al.name }}</h1>
+    <span class="hero-compare">{{ whose[0] }} #{{ '{:,}'.format(al.rank) }} album of all time (out of {{ '{:,}'.format(al.of) }})
+      · {{ al.share_of_artist }}% of {{ whose[1] }} {{ al.artist }} listening</span>
+  </div>
+</section>
+
+{% set vs_url = url_for('vs_panel', kind='album', name=al.name, artist=al.artist, who=who) %}
+{% include "_vs_button.html" %}
+
+<section class="tiles">
+  {% for label, value in al.tiles %}
+    <div class="tile"><span class="tile-label">{{ label }}</span><span class="tile-value" {% if label != 'First listen' %}data-count{% endif %}>{{ value }}</span></div>
+  {% endfor %}
+</section>
+
+<!-- In one go? -->
+<section class="card one-go">
+  <div class="card-head">
+    <h2>In one go?</h2>
+    <p class="small">A <b>sitting</b> is songs from this album played back to back, nothing else in between.
+      A <b>full listen</b> covers at least {{ og.needed }} of its {{ al.size }} songs.
+      {% if not al.known_order %}The tracklist hasn't been loaded from Spotify yet, so its size is estimated from the songs you've played from it, and order can't be judged.{% endif %}</p>
+  </div>
+  <div class="one-go-main">
+    <span class="big-stat">{{ og.here }}%</span>
+    <p>of {{ whose[1] }} plays of it happen <b>as an album</b> (3+ of its songs in a row).
+      {% if og.ratio and og.ratio >= 1.5 %}That's <b>{{ '%.0f' % og.ratio }}×</b> {{ whose[1] }} usual {{ og.usual }}%: this is one {{ 'you' if whose[0] == 'Your' else 'they' }} sit through.
+      {% elif og.ratio and og.ratio <= 0.67 %}Less than {{ whose[1] }} usual {{ og.usual }}%: mostly a pick-and-choose album.
+      {% else %}About {{ whose[1] }} usual ({{ og.usual }}%).{% endif %}</p>
+  </div>
+  <ul class="one-go-facts">
+    <li><b>{{ og.full }}</b> full listen{{ 's' if og.full != 1 }}{% if og.in_order is not none %}, <b>{{ og.in_order }}</b> in order{% endif %}{% if og.last_full %} · last on {{ og.last_full }}{% endif %}</li>
+    <li><b>{{ og.sittings }}</b> sittings of 3+ songs</li>
+    {% if og.longest %}<li>Longest: <b>{{ og.longest.songs }} songs</b> in {{ og.longest.minutes }} min on {{ og.longest.date }}</li>{% endif %}
+    {% if og.finish is not none %}<li>Started from track 1 <b>{{ og.starts }}</b> times, and went all the way to the end <b>{{ og.finish }}%</b> of those</li>{% endif %}
+  </ul>
+</section>
+
+{% set fav = al.favourites[0] if al.favourites else None %}
+{{ m.highlights([
+  {"label": "Favourite song", "value": fav.name if fav else None, "art": {"kind": "track", "track": fav.track} if fav and fav.track else None,
+   "detail": (fav.plays ~ " plays, " ~ (fav.hours | hours)) if fav else ""},
+  {"label": "The one you come back for", "value": al.come_back.name if al.come_back else None,
+   "art": {"kind": "track", "track": al.come_back.track} if al.come_back and al.come_back.track else None,
+   "detail": ("played on its own, outside the album, " ~ al.come_back.alone ~ " times") if al.come_back else ""},
+  {"label": "Most skipped", "value": al.skips.most.name if al.skips.most else None,
+   "detail": (al.skips.most.skip ~ "% skipped, vs " ~ al.skips.rate ~ "% for the album") if al.skips.most else ""},
+]) }}
+
+<!-- Song by song -->
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Song by song</h2>
+      <p class="small">{% if al.known_order %}In album order{% else %}Most played first (album order not loaded){% endif %}.
+        Hover a row for the details.{% if al.never %} Never played: {{ al.never | length }}.{% endif %}</p>
+    </div>
+    <div class="seg-toggle" role="group" aria-label="Show" data-part="0">
+      <button type="button" data-value="plays" class="active">Plays</button>
+      <button type="button" data-value="skips">Skips</button>
+      {% if og.finish is not none %}<button type="button" data-value="reach">Drop-off</button>{% endif %}
+    </div>
+  </div>
+  {% set max_rows = 14 %}
+  <div class="more-wrap">
+    <ol class="tracklist">
+      {% for s in al.songs %}
+        <li class="{{ 'extra' if loop.index > max_rows }} {{ 'unplayed' if not s.plays }}"
+            data-tip="{{ s.name }}: {{ s.plays }} plays{% if s.seen %}, skipped {{ s.skip if s.skip is not none else '?' }}% of {{ s.seen }} times{% if s.instant %} ({{ s.instant }} within 10 s){% endif %}{% endif %}{% if s.alone %}, {{ s.alone }} on its own{% endif %}">
+          <span class="tl-n">{{ s.n if s.n else loop.index }}</span>
+          <span class="tl-name">
+            {% if s.track %}<a href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}
+            {% if s.length %}<span class="tl-len">{{ s.length }}</span>{% endif %}
+          </span>
+          <span class="tl-bar" data-key="plays"><span style="width: {{ s.bar }}%"></span></span>
+          <span class="tl-fig" data-key="plays">{{ s.plays if s.plays else 'never' }}</span>
+          <span class="tl-bar skip" data-key="skips" hidden>{% if s.skip is not none %}<span style="width: {{ s.skip }}%"></span>{% endif %}</span>
+          <span class="tl-fig" data-key="skips" hidden>{{ (s.skip ~ '%') if s.skip is not none else '–' }}</span>
+          {% if og.finish is not none %}
+            <span class="tl-bar reach" data-key="reach" hidden><span style="width: {{ s.reach or 0 }}%"></span></span>
+            <span class="tl-fig" data-key="reach" hidden>{{ s.reach }}%</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+    {% if al.songs | length > max_rows %}<button type="button" class="more-btn">Show all {{ al.songs | length }}</button>{% endif %}
+  </div>
+  <p class="small note" data-key="skips" hidden>Skip % only for songs that came up 5+ times (export data only).
+    {{ al.skips.instant }} skips on this album were within the first 10 seconds.</p>
+  {% if og.finish is not none %}<p class="small note" data-key="reach" hidden>Of the {{ og.starts }} times you started from track 1, the share that made it at least this far without leaving the album.</p>{% endif %}
+  {% if al.other_plays %}<p class="small note">Plus {{ al.other_plays }} plays of songs from other editions of the album (not on this tracklist).</p>{% endif %}
+</section>
+
+<div class="two-col">
+  {% set sk = al.skips %}
+  {% if sk.rate is not none %}
+  <section class="card">
+    <div class="card-head">
+      <h2>How you skip it</h2>
+      <p class="small">From the full-history export (the live tracking doesn't record skips).</p>
+    </div>
+    <ul class="meters">
+      <li data-tip="Skipped {{ sk.rate }}% of the time, vs {{ sk.usual }}% for all {{ whose[1] }} listening">
+        <span class="meter-name">This album</span><span class="meter-bar compare"><span style="width: {{ sk.rate }}%"></span><i style="left: {{ sk.usual }}%"></i></span><span class="meter-fig">{{ sk.rate }}%</span></li>
+      {% if sk.in_runs is not none %}<li data-tip="When played as an album (3+ songs in a row)">
+        <span class="meter-name">As an album</span><span class="meter-bar compare"><span style="width: {{ sk.in_runs }}%"></span><i style="left: {{ sk.usual }}%"></i></span><span class="meter-fig">{{ sk.in_runs }}%</span></li>{% endif %}
+      {% if sk.alone is not none %}<li data-tip="When a song from it comes up on its own (shuffle, playlists, radio)">
+        <span class="meter-name">On its own</span><span class="meter-bar compare"><span style="width: {{ sk.alone }}%"></span><i style="left: {{ sk.usual }}%"></i></span><span class="meter-fig">{{ sk.alone }}%</span></li>{% endif %}
+    </ul>
+    <p class="small note"><span class="usual-key"></span> = {{ whose[1] }} usual skip rate ({{ sk.usual }}%).
+      {% if sk.never %}Never skipped (8+ times): {{ sk.never | join(', ') }}.{% endif %}</p>
+  </section>
+  {% endif %}
+  {% if al.when %}{{ m.when(al.when, "album") }}{% endif %}
+</div>
+
+{% if al.history %}
+  {{ m.history(al.history, whose[0] ~ " history with it", "Plays per month. First played " ~ al.first.date ~ ", starting with " ~ al.first.song ~ ".") }}
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}{% include "_entity_scripts.html" %}{% endblock %}

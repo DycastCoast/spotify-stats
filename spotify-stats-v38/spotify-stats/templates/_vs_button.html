@@ -1,0 +1,10 @@
+{# "Compare with ..." buttons for song and artist pages. Nothing is loaded until one is clicked. #}
+{% if friends %}
+<section class="vs-bar-row" data-vs-url="{{ vs_url }}">
+  <span class="small">Compare {{ 'this song' if 'kind=song' in vs_url else 'this album' if 'kind=album' in vs_url else 'this artist' }} with</span>
+  {% for f in friends %}
+    <button type="button" class="vs-btn" data-with="{{ f.id }}">{{ 'you' if f.id == session.user_id else f.display_name }}</button>
+  {% endfor %}
+</section>
+<div class="card vs-card" id="vs-card" hidden aria-live="polite"></div>
+{% endif %}

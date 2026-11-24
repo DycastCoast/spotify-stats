@@ -1,0 +1,22 @@
+# The web address: https://dycast-stats.montlab.cc (certificate from Let's Encrypt).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spotify-stats
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [dycast-stats.montlab.cc]
+      secretName: dycast-stats-tls
+  rules:
+    - host: dycast-stats.montlab.cc
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spotify-stats
+                port: { number: 80 }

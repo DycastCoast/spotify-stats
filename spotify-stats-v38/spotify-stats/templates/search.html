@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Search · Listening Stats{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{% if query %}Results for “{{ query }}”{% else %}Search{% endif %}</h1></div>
+
+{% if query and query | length < 2 %}
+  <p class="empty">Type at least 2 letters.</p>
+{% elif query and not results.songs and not results.artists and not results.albums %}
+  <p class="empty">Nothing in this history matches “{{ query }}”.</p>
+{% elif query %}
+  <div class="two-col">
+    <section class="card">
+      <h2>Artists</h2>
+      <ol class="ranked">
+        {% for a in results.artists %}
+          <li><span class="rank-num">{{ loop.index }}</span>
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=a.name, who=who) }}">{{ a.name }}</a></span>
+            <span class="rank-fig">{{ a.hours }} h</span></li>
+        {% else %}<p class="empty small">No artists.</p>{% endfor %}
+      </ol>
+    </section>
+    <section class="card">
+      <h2>Albums</h2>
+      <ol class="ranked">
+        {% for a in results.albums %}
+          <li><span class="rank-num">{{ loop.index }}</span>
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('album_page', name=a.name, artist=a.artist, who=who) }}">{{ a.name }}</a>
+              <span class="rank-artist">{{ a.artist }}</span></span>
+            <span class="rank-fig">{{ a.hours }} h</span></li>
+        {% else %}<p class="empty small">No albums.</p>{% endfor %}
+      </ol>
+    </section>
+    <section class="card">
+      <h2>Songs</h2>
+      <ol class="ranked">
+        {% for s in results.songs %}
+          <li><span class="rank-num">{{ loop.index }}</span>
+            <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>
+              <span class="rank-artist">{{ s.artist }}</span></span>
+            <span class="rank-fig">{{ s.plays }} plays</span></li>
+        {% else %}<p class="empty small">No songs.</p>{% endfor %}
+      </ol>
+    </section>
+  </div>
+{% endif %}
+{% endblock %}

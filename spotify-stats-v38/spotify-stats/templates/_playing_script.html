@@ -1,0 +1,101 @@
+<script>
+  // The "Listening now" card. Everything from Spotify goes in with textContent.
+  (() => {
+    const box = document.getElementById("playing");
+    if (!box || window.SNAPSHOT) return;
+    const who = box.dataset.who, you = box.dataset.you === "1";
+    const card = box.querySelector(".np-card"), msg = box.querySelector(".np-message");
+    const $ = sel => box.querySelector(sel);
+    const clock = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+    const li = (text, href) => {
+      const item = document.createElement("li");
+      if (href) { const a = document.createElement("a"); a.href = href; a.textContent = text; item.append(a); }
+      else item.textContent = text;
+      return item;
+    };
+    const OTHER = {{ whose[0][:-2] | tojson }}, POSS = {{ whose[1] | tojson }}, ME = {{ session.user_id | tojson }};
+    const MESSAGES = {
+      idle: you ? "Nothing playing on Spotify right now." : `${OTHER} isn't playing anything right now.`,
+      other: "Playing a podcast or ad, not a song.",
+      relogin: you ? "To see what you're playing, log out and back in once: the site needs one new Spotify permission."
+                   : `${OTHER} needs to log out and back in once before this works.`,
+      none: `${OTHER} hasn't logged in on the site, so there's nothing live to show.`,
+      private: `${OTHER} hasn't switched on sharing what they're playing.`,
+      unknown: "Couldn't reach Spotify just now. Trying again shortly.",
+    };
+    let tick = null, shownTrack = null;
+
+    function show(d) {
+      clearInterval(tick);
+      const on = d.state === "playing" || d.state === "paused";
+      card.hidden = !on;
+      msg.hidden = on;
+      if (!on) { msg.textContent = MESSAGES[d.state] || MESSAGES.unknown; return; }
+      $(".np-kicker").textContent = d.state === "playing" ? "Listening now" : "Paused";
+      const songUrl = d.about && d.about.known ? `/song/${d.about.track}?who=${encodeURIComponent(who)}` : null;
+      const link = $(".np-song a");
+      link.textContent = d.song;
+      songUrl ? link.setAttribute("href", songUrl) : link.removeAttribute("href");
+      $(".np-artist").textContent = `${d.artists}${d.album ? " · " + d.album : ""}`;
+      const cover = $(".np-cover");
+      if (d.image) { cover.src = d.image; cover.hidden = false; } else cover.hidden = true;
+      $(".np-len").textContent = clock(d.duration_ms);
+      // Move the bar along locally every second instead of asking Spotify every second.
+      const started = d.received - d.progress_ms;
+      const draw = () => {
+        const at = d.state === "playing" ? Math.min(d.duration_ms, Date.now() - started) : d.progress_ms;
+        $(".np-progress span").style.width = `${100 * at / (d.duration_ms || 1)}%`;
+        $(".np-at").textContent = clock(at);
+      };
+      draw();
+      if (d.state === "playing") tick = setInterval(draw, 1000);
+      if (shownTrack !== d.track_id) { shownTrack = d.track_id; facts(d); }
+    }
+
+    function facts(d) {
+      const list = $(".np-facts"), a = d.about || {};
+      list.replaceChildren();
+      const W = you ? "your" : POSS;
+            if (a.known) {
+        list.append(li(`#${a.rank.toLocaleString()} of ${a.of.toLocaleString()} songs in ${W} history`));
+        list.append(li(`${a.plays.toLocaleString()} plays · ${a.hours} h · first heard ${a.first}`));
+        if (a.recent >= 3) list.append(li(`On repeat: ${a.recent} plays in the last two weeks`));
+        if (a.skip_rate !== null && a.skip_rate !== undefined) list.append(li(`${you ? "You skip" : "Skipped"} it ${a.skip_rate}% of the time`));
+      } else {
+        list.append(li(`New: not in ${W} history yet`));
+      }
+      if (a.artist) list.append(li(`${d.artist} is ${W} #${a.artist.rank} artist (${a.artist.hours} h)`));
+      if (a.album) list.append(li(`The album is ${W} #${a.album.rank}`));
+      (a.friends || []).slice(0, 3).forEach(f =>
+        list.append(li(`${f.id === ME ? "You've" : f.name + " has"} played it ${f.plays.toLocaleString()} times`,
+                       `/song/${f.track}?who=${encodeURIComponent(f.id)}`)));
+      if (a.known === false && !(a.friends || []).length && !a.artist) list.append(li(`Nobody on the site has played it before`));
+    }
+
+    nowPlaying.on(you ? "/api/playing" : `/api/playing?who=${encodeURIComponent(who)}`, show);
+
+    // Friends listening now (your own Right now page only): every 45 seconds while visible.
+    const friends = document.getElementById("np-friends");
+    if (!friends) return;
+    const list = friends.querySelector(".np-friend-list"), empty = friends.querySelector(".np-friends-empty");
+    async function load() {
+      if (document.hidden) return;
+      let rows = [];
+      try { rows = await (await fetch("/api/playing/friends")).json(); } catch { }
+      list.replaceChildren(...rows.map(r => {
+        const item = document.createElement("li");
+        const img = document.createElement("img"); img.alt = ""; if (r.image) img.src = r.image;
+        const text = document.createElement("span");
+        const who = document.createElement("a"); who.href = `/now?who=${encodeURIComponent(r.who)}#playing`; who.textContent = r.name;
+        const what = document.createElement("small"); what.textContent = `${r.state === "paused" ? "Paused: " : ""}${r.song} · ${r.artist}`;
+        text.append(who, what);
+        item.append(img, text);
+        return item;
+      }));
+      empty.hidden = rows.length > 0;
+    }
+    load();
+    setInterval(load, 45000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  })();
+</script>

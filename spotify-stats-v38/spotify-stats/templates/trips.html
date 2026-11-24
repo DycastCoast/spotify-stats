@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Trips · Listening Stats{% endblock %}
+{% block content %}
+
+<div class="filters">
+  <h1>Trips</h1>
+  <span class="private-note"><span aria-hidden="true">🔒</span> Only you can see this page</span>
+</div>
+
+{% if not t or not t.trips %}
+  <section class="card">
+    <p class="empty">No trips found yet. Trips come from the country Spotify logs with each play, which is only in the
+      full history export (not the live tracking), so they appear once an export is imported.</p>
+  </section>
+{% else %}
+
+<!-- Headline -->
+<section class="hero-stat {{ 'themed' if page_theme }}">
+  <div class="hero-text">
+    <span class="hero-kicker">Away from {{ t.home }} <span class="flag">{{ t.home_code | flag }}</span> · since {{ t.located_from }}</span>
+    <div class="hero-main">
+      <span class="hero-number" data-count>{{ t.total_days }}</span>
+      <span class="hero-unit">days abroad, {{ t.count }} trip{{ 's' if t.count != 1 }}</span>
+    </div>
+    <span class="hero-compare">
+      {{ t.countries | length }} countr{{ 'ies' if t.countries | length != 1 else 'y' }}.
+      {% if t.busiest_year %}Most time away: {{ t.busiest_year.year }}, with {{ t.busiest_year.days }} days.{% endif %}
+      {% if t.longest %}Longest: {{ t.longest.days }} days in {{ t.longest.country }} ({{ t.longest.dates }}).{% endif %}
+    </span>
+  </div>
+  <details class="how">
+    <summary>How are trips found?</summary>
+    <p class="small">Spotify logs the country of the network you're on with every play. A trip is a run of days where
+      another country makes up at least a quarter of your plays (a UK SIM abroad often still shows up as the UK, so it
+      doesn't need to be most of them), lasting at least 2 days. A VPN can occasionally fake one.
+      Only the full history export has countries, so the live tracking since then adds none.</p>
+    <p class="small">Short trips where your phone mostly showed {{ t.home }} are caught from faint traces: plays from
+      different countries a day or two apart (like a day each in two countries), a country on 2+ days close together,
+      or a single day right next to a trip (counted as part of it, or as a stop on the way).
+      Countries that keep popping up on their own on {{ 5 }}+ separate days are treated as VPN or network noise and ignored for this{% if t.noise %}:
+      for you that's {% for code, name in t.noise %}<span class="flag">{{ code | flag }}</span> {{ name }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</p>
+    {% if t.maybes %}
+      <p class="small"><b>Not counted</b> (a single day on its own, which is as likely a VPN as a day trip):</p>
+      <ul class="maybes">
+        {% for mb in t.maybes %}<li><span class="flag">{{ mb.code | flag }}</span> {{ mb.country | replace('the ', 'The ', 1) if mb.country.startswith('the ') else mb.country }} · {{ mb.date }} · {{ mb.plays }} play{{ 's' if mb.plays != 1 }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  </details>
+</section>
+
+<!-- The map: a pin per trip (its top 4 album covers), hover/tap for the trip -->
+{% set W, H = geo_size %}
+<section class="card tripmap" aria-label="Map of your trips">
+  <div class="card-head">
+    <h2>Where you've been</h2>
+    <p class="small">Each pin is a trip, made of its 4 most-played albums. Hover or tap one for the trip.
+      Drag to move, pinch or <kbd>Ctrl</kbd> + scroll to zoom. Pins close together merge until you zoom in.</p>
+  </div>
+  <div class="map-frame" id="map-frame">
+    <svg class="map" id="map" viewBox="0 0 {{ W }} {{ H }}" preserveAspectRatio="none" aria-hidden="true">
+      <image href="{{ url_for('world_map') }}" x="0" y="0" width="{{ W }}" height="{{ H }}"/>
+      <g class="visited">
+        {% for c in t.countries %}<path d="{{ geo_outline(c.code) }}" vector-effect="non-scaling-stroke"/>{% endfor %}
+      </g>
+      {% if t.home_code %}<path class="home" d="{{ geo_outline(t.home_code) }}" vector-effect="non-scaling-stroke"/>{% endif %}
+      <polyline class="route" id="map-route" points="" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="map-pins" id="map-pins"></div>
+    <div class="map-card" id="map-card" hidden></div>
+    <div class="map-zoom">
+      <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+      <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" data-zoom="fit" aria-label="Show all trips">⤢</button>
+    </div>
+  </div>
+  <ul class="country-chips">
+    {% for c in t.countries %}
+      <li data-tip="{{ c.name }}: {{ c.trips }} trip{{ 's' if c.trips != 1 }}, first in {{ c.first }}"><span class="flag">{{ c.code | flag }}</span> {{ c.heading }} <span class="chip-fig">{{ c.days }} d</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{# The pins' data. tojson escapes everything, so trip names can't break out of the script tag. #}
+<script type="application/json" id="trip-data">{{ t.trips | map_pins | tojson }}</script>
+
+<!-- Every trip, newest first -->
+<section class="trips">
+  <div class="more-wrap">
+    {% for x in t.trips %}
+      {% if loop.first or x.year != loop.previtem.year %}<h2 class="trip-year {{ 'extra' if loop.index > 6 }}">{{ x.year }}</h2>{% endif %}
+      <article class="card trip {{ 'extra' if loop.index > 6 }}" id="trip-{{ loop.index }}">
+        <div class="trip-head">
+          <img class="trip-art" alt="" data-art-kind="track" data-art-track="{{ (x.trip_song or x.top[0]).track }}">
+          <div class="trip-title">
+            <span class="hl-label">{{ x.dates }} · {{ x.days }} days{% if x.long %} · a long stay{% endif %}{% if x.came_from %} · straight from <span class="flag">{{ x.came_from_code | flag }}</span> {{ x.came_from }}{% endif %}{% for code, name in x.stopovers %} · with a stop in <span class="flag">{{ code | flag }}</span> {{ name }}{% endfor %}</span>
+            <h3><span class="flag">{% for c in x.stops %}{{ c | flag }}{% endfor %}</span> {{ x.heading }}</h3>
+            <p class="small">{{ x.hours | hours }} of music, about {{ '%.0f' % x.per_day_min }} min a day{% if x.vs_usual %}
+              ({% if x.vs_usual >= 1.3 %}{{ '%.1f' % x.vs_usual }}× your usual{% elif x.vs_usual <= 0.77 %}{{ '%.1f' % (1 / x.vs_usual) }}× less than usual{% else %}about your usual{% endif %}){% endif %}.
+              Most played: <a class="inline-link" href="{{ url_for('artist_page', name=x.top_artist) }}">{{ x.top_artist }}</a>.</p>
+          </div>
+        </div>
+        {% if x.faint %}
+          <p class="small faint-note">A short one, picked up from just {{ x.faint }} play{{ 's' if x.faint != 1 }} that showed {{ 'these countries' if x.stops | length > 1 else 'the country' }}:
+            your phone mostly reported {{ t.home }} (probably mobile data roaming), so the dates are approximate.</p>
+        {% endif %}
+        {% if x.trip_song %}
+          <p class="trip-song">
+            <span class="hl-label">The song of the trip</span>
+            <a href="{{ url_for('song', track_id=x.trip_song.track) }}"><b>{{ x.trip_song.name }}</b></a> by {{ x.trip_song.artist }}:
+            played {{ x.trip_song.plays }} times{% if x.trip_song.before == 0 %}, after not once in the 60 days before{% else %}, against {{ x.trip_song.before }} in the 60 days before{% endif %}.
+          </p>
+        {% endif %}
+        <details class="era-more">
+          <summary>The full soundtrack{% if x.found_count %} and what you found there{% endif %}</summary>
+          <div class="era-grid">
+            <div>
+              <h4 class="list-title">Most played</h4>
+              <ol class="ranked compact">
+                {% for s in x.top %}
+                  <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                    <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+                    <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track) }}">{{ s.name }}</a><span class="rank-artist">{{ s.artist }}</span></span>
+                    <span class="rank-fig">{{ s.plays }}×</span></li>
+                {% endfor %}
+              </ol>
+            </div>
+            <div>
+              <h4 class="list-title">Found on this trip</h4>
+              {% if x.found %}
+                <p class="small">{{ x.found_count }} artist{{ 's' if x.found_count != 1 }} you first played here and went on to play 10+ times.</p>
+                <ol class="ranked compact">
+                  {% for a in x.found %}
+                    <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                      <img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ a.track }}">
+                      <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=a.name) }}">{{ a.name }}</a></span>
+                      <span class="rank-fig">{{ a.hours | hours }} since</span></li>
+                  {% endfor %}
+                </ol>
+              {% else %}<p class="small">No new artists from this trip stuck.</p>{% endif %}
+            </div>
+          </div>
+        </details>
+      </article>
+    {% endfor %}
+    {% if t.trips | length > 6 %}<button type="button" class="more-btn">Show all {{ t.trips | length }} trips</button>{% endif %}
+  </div>
+</section>
+
+<!-- Trips together: opt-in, and only with friends who've opted in too -->
+<section class="card together" id="together">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Trips together</h2>
+      <p class="small">Trips where you and a friend were in the same country on the same days. Only those overlapping days are
+        shown, never anyone's other trips. It only appears when <b>both</b> of you switch it on.</p>
+    </div>
+    <form method="post" action="{{ url_for('trips_share') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="on" value="{{ '0' if sharing else '1' }}">
+      <button type="submit" class="vs-btn share-btn {{ 'active' if sharing }}">{{ 'Sharing is on · turn off' if sharing else 'Turn on sharing' }}</button>
+    </form>
+  </div>
+  {% if not sharing %}
+    <p class="small">Off. Your friends can't see any of your trips.</p>
+  {% else %}
+    {% for g in together %}
+      {% for x in g.trips %}
+        <article class="trip together-trip">
+          <span class="hl-label">{{ x.dates }} · {{ x.days }} days</span>
+          <h3><span class="flag">{{ x.code | flag }}</span> {{ x.heading }} with {{ g.with }}</h3>
+          <p class="small">
+            You were mostly playing <b>{{ x.my_top.name }}</b> ({{ x.my_top.plays }}×); {{ g.with }} was on <b>{{ x.their_top.name }}</b> ({{ x.their_top.plays }}×).
+            {% if x.jams %}{{ x.jams }} Jam session{{ 's' if x.jams != 1 }} ({{ x.jam_songs }} songs together).{% endif %}
+            {% if x.shared_count %}{{ x.shared_count }} song{{ 's' if x.shared_count != 1 }} you both played:{% else %}No songs in common those days: separate headphones.{% endif %}
+          </p>
+          {% if x.shared_songs %}
+            <ol class="ranked compact">
+              {% for s in x.shared_songs %}
+                <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                  {% if s.track %}<img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+                  <span class="rank-text">{% if s.track %}<a class="rank-name" href="{{ url_for('song', track_id=s.track) }}">{{ s.name }}</a>{% else %}<span class="rank-name">{{ s.name }}</span>{% endif %}<span class="rank-artist">{{ s.artist }}</span></span>
+                  <span class="rank-fig">{{ s.plays }}×</span></li>
+              {% endfor %}
+            </ol>
+          {% endif %}
+        </article>
+      {% endfor %}
+    {% endfor %}
+    {% if not together %}
+      <p class="small">{% if waiting %}Waiting for {{ waiting | join(' and ') }} to switch it on too.{% else %}No trips in common found yet.{% endif %}</p>
+    {% elif waiting %}
+      <p class="small note">{{ waiting | join(' and ') }} {{ 'hasn\'t' if waiting | length == 1 else "haven't" }} switched it on yet.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+{% include "_trip_map.html" %}
+<script>
+  document.querySelectorAll(".hero-number[data-count]").forEach(el => motion.countUp(el));
+  motion.reveal(".trip");
+</script>
+{% endblock %}

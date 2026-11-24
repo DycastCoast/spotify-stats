@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ pl.title }} · Playlists · Listening Stats{% endblock %}
+{% block content %}
+{% set covers = pl.songs | covers %}
+<section class="pl-hero">
+  <span class="mosaic huge {{ 'single' if covers | length < 4 }}" aria-hidden="true">
+    {% for t in (covers if covers | length >= 4 else covers[:1]) %}<img alt="" data-art-kind="track" data-art-track="{{ t }}">{% endfor %}
+  </span>
+  <div class="pl-hero-text">
+    <a class="hero-kicker" href="{{ url_for('playlists_page') }}">← Playlists</a>
+    <h1>{{ pl.title }}</h1>
+    <p>{{ pl.subtitle }}</p>
+    {% if pl.tags %}<span class="mood-tags">{% for t in pl.tags %}<span class="tag">{{ t }}</span>{% endfor %}</span>{% endif %}
+    <div class="pl-actions">
+      {% if saved %}
+        <a class="button" href="{{ saved }}" target="_blank" rel="noopener">Saved · open in Spotify ↗</a>
+      {% elif pl.songs %}
+        {% if can_save %}
+          <form method="post" action="{{ url_for('playlist_save') }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            {% for k, v in args.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            <button type="submit" class="button">Save to Spotify</button>
+          </form>
+        {% else %}
+          <span class="small">To save playlists into Spotify, <a href="{{ url_for('logout') }}">log out</a> and back in once (it needs one new permission).</span>
+        {% endif %}
+      {% endif %}
+      <span class="pl-length small">Length:
+        {% for n in (20, 30, 50) %}<a href="{{ url_for('playlist_page', **dict(args, n=n)) }}" class="{{ 'on' if (args.n or '30') == n | string }}">{{ n }}</a>{% endfor %}
+      </span>
+      {% if args.kind == 'like' %}
+        <a class="small" href="{{ url_for('playlist_page', **dict(args, new='' if args.new else '1')) }}">{{ "Show all songs" if args.new else "Only songs new to me" }}</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% if pl.songs %}
+<ol class="card pl-list">
+  {% for s in pl.songs %}
+    <li>
+      <span class="pl-num">{{ loop.index }}</span>
+      <img class="pl-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+      <span class="pl-song">
+        <a href="{{ url_for('song', track_id=s.track) }}">{{ s.name }}</a>
+        <a class="small" href="{{ url_for('artist_page', name=s.artist) }}">{{ s.artist }}</a>
+      </span>
+      <span class="pl-note small">{{ s.note }}</span>
+      {% if s.track | length == 22 %}<a class="pl-open" href="https://open.spotify.com/track/{{ s.track }}" target="_blank" rel="noopener" aria-label="Open {{ s.name }} in Spotify">↗</a>{% endif %}
+    </li>
+  {% endfor %}
+</ol>
+{% else %}
+  <section class="card"><p class="small">Nothing to go on for this one yet{% if args.new %}: no songs new to you around it, so try showing all songs{% endif %}.</p></section>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include "_entity_scripts.html" %}{% endblock %}

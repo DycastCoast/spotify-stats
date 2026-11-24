@@ -1,0 +1,81 @@
+{# The "Compare with ..." panel: whose page it is (a, blue) against a friend (b, orange). Loaded on demand. #}
+{% set noun = 'this song' if v.kind == 'song' else 'this album' if v.kind == 'album' else 'them' %}
+<div class="vs-panel">
+  {% if v.never %}
+    <p class="vs-never"><i class="key-b"></i><b>{{ v.b }}</b> {{ "haven't" if v.b == 'You' else "has never" }} played {{ noun }}{{ ', not even once' }}.</p>
+  {% else %}
+    <div class="vs-head">
+      <span><i class="key-a"></i>{{ v.a }}</span><span><i class="key-b"></i>{{ v.b }}</span>
+    </div>
+    <ul class="vs-rows">
+      {% for r in v.rows %}
+        <li>
+          <span class="vs-label">{{ r.label }}</span>
+          <span class="vs-val a">{{ r.a }}</span>
+          <span class="vs-bars">
+            {% if r.bars %}
+              <span class="vs-bar a" style="width: {{ r.wa }}%"></span>
+              <span class="vs-bar b" style="width: {{ r.wb }}%"></span>
+            {% endif %}
+          </span>
+          <span class="vs-val b">{{ r.b }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if v.found %}<p class="vs-found">{{ v.found }}</p>{% endif %}
+
+    {% if v.chart %}{% set c = v.chart %}
+      <h3 class="list-title">Plays per month</h3>
+      <svg class="vs-chart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="Plays per month for {{ v.a }} and {{ v.b }}">
+        {% for val, ty in c.y_ticks %}
+          <line class="grid" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+          <text class="tick" x="{{ c.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ val }}</text>
+        {% endfor %}
+        {% for label, tx in c.x_ticks %}<text class="tick" x="{{ tx }}" y="{{ c.h - 8 }}">{{ label }}</text>{% endfor %}
+        <path class="vs-line b" d="{{ c.b }}"/>
+        <path class="vs-line a" d="{{ c.a }}"/>
+        {% for col in c.cols %}<rect class="hover-col" x="{{ col.x }}" y="0" width="{{ col.w }}" height="{{ c.bottom }}" data-tip="{{ col.tip }} ({{ v.a }} vs {{ v.b }})"/>{% endfor %}
+      </svg>
+    {% endif %}
+
+    {% if v.kind == 'album' %}
+      {% set f = v.favourites %}
+      <p class="vs-found">{% if f.same %}Same favourite song: <b>{{ f.a }}</b>.{% else %}Favourite song: <i class="key-a"></i><b>{{ f.a }}</b> vs <i class="key-b"></i><b>{{ f.b }}</b>.{% endif %}</p>
+      <h3 class="list-title">Song by song</h3>
+      <p class="small">Each bar is that song's share of the person's plays of this album, so a heavy and a light listener compare fairly. Hover for plays.</p>
+      <ol class="vs-tracks">
+        {% for r in v.tracks %}
+          <li>
+            <span class="tl-n">{{ r.n if r.n else loop.index }}</span>
+            <span class="tl-name">{% if r.track %}<a href="{{ url_for('song', track_id=r.track, who=who) }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</span>
+            <span class="vs-bars">
+              <span class="vs-bar a" style="width: {{ r.wa }}%" data-tip="{{ v.a }}: {{ r.ca }} plays ({{ '%.0f' % r.pa }}%)"></span>
+              <span class="vs-bar b" style="width: {{ r.wb }}%" data-tip="{{ v.b }}: {{ r.cb }} plays ({{ '%.0f' % r.pb }}%)"></span>
+            </span>
+          </li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+    {% if v.kind == 'artist' %}
+      <div class="vs-songs">
+        {% for title, rows, cls in ((v.a ~ "'s" if v.a != 'You' else 'Your', v.songs_a, 'a'), (v.b ~ "'s" if v.b != 'You' else 'Your', v.songs_b, 'b')) %}
+          <div>
+            <h3 class="list-title"><i class="key-{{ cls }}"></i>{{ title }} top songs by them</h3>
+            <ol class="ranked compact">
+              {% for s in rows %}
+                {% set link = s.track if cls == 'a' else s.track_a %}
+                <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+                  {% if s.track %}<img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+                  <span class="rank-text">
+                    {% if link %}<a class="rank-name" href="{{ url_for('song', track_id=link, who=who) }}">{{ s.name }}</a>{% else %}<span class="rank-name">{{ s.name }}</span>{% endif %}
+                    {% if s.both %}<span class="rank-artist">in both top 5s</span>{% endif %}
+                  </span>
+                  <span class="rank-fig">{{ s.hours | hours }}</span></li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
+</div>

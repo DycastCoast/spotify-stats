@@ -1,0 +1,10 @@
+# The storage that survives restarts: holds stats.db (about 210 MB now). Create it once.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spotify-stats-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi

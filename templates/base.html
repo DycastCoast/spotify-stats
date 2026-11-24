@@ -16,17 +16,16 @@
     })();
   </script>
 
-  <!-- Fonts: Bricolage Grotesque for headings and big numbers, Figtree for everything else.
-       Loaded from Google Fonts for now; they can be downloaded into static/ later so the
-       site makes no outside requests. -->
+  <!-- Font: Space Grotesk for everything (the "Poster" look). Loaded from Google Fonts. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400..700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=style_version) }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   {% if page_theme %}
-  <!-- This page's colour, picked from the top song's cover -->
-  <style>:root { --accent: {{ page_theme.hex }}; --accent-rgb: {{ page_theme.rgb }}; }</style>
+  <!-- This page's colour, picked from the top song's cover: fills the big block at the top.
+       --cover-ink is black or white, whichever reads better on it. -->
+  <style>:root { --cover: {{ page_theme.hex }}; --cover-rgb: {{ page_theme.rgb }}; --cover-ink: {{ page_theme.rgb | ink }}; }</style>
   {% endif %}
 </head>
 <body>
@@ -35,7 +34,7 @@
   <div id="nav-progress" aria-hidden="true"></div>
   <header class="topbar">
     <a class="brand" href="{{ url_for('index') }}">
-      <span class="brand-dot"></span> Listening Stats
+      <span>STATS</span><span class="brand-star" aria-hidden="true">*</span>
     </a>
     {% if user %}
       {# The pages, grouped. Each group is a <details> menu: it opens and closes without
@@ -45,6 +44,7 @@
                  ("overview", "Overview", "Totals, top lists, when and how you listen"),
                  ("journey_page", "Journey", "Your eras and how your taste changed"),
                  ("playlists_page", "Playlists", "Made from how you listen: moods, friends, more like this"),
+                 ("trivia_page", "Trivia", "Do you know you? 10 questions from your own history"),
                  ("skips_page", "Skips", "What you skip, when, and burnout"),
                  ("on_this_day", "On this day", "Today in earlier years"),
                  ("trips_page", "Trips", "Your listening abroad (only you can see it)")]),
@@ -209,8 +209,13 @@
           if (result.image_url) cover.querySelector("img").src = result.image_url;
           if (!result.colour_hex) return;
           const root = document.documentElement.style;
-          root.setProperty("--accent", result.colour_hex);          // CSS transitions fade it in
-          root.setProperty("--accent-rgb", result.colour_rgb);
+          // The page's big block takes the cover's colour, with black or white text on it.
+          const [r, g, b] = result.colour_rgb.split(",").map(x => +x / 255)
+            .map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+          const light = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          root.setProperty("--cover", result.colour_hex);
+          root.setProperty("--cover-rgb", result.colour_rgb);
+          root.setProperty("--cover-ink", (light + 0.05) / 0.05 >= 1.05 / (light + 0.05) ? "#000" : "#fff");
           document.querySelectorAll(".hero-stat, .entity-hero").forEach(el => el.classList.add("themed"));
           const words = document.getElementById("colour-words");
           if (words) {

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title or "Something went wrong" }} · Listening Stats{% endblock %}
+{% block content %}
+<section class="hero error-hero">
+  <h1>{{ title or "Something went wrong" }}</h1>
+  <p>{{ message }}</p>
+  <div class="error-actions">
+    {% if user and not has_history %}
+      {# Most "not enough history" errors for a new person are fixed by importing #}
+      <a class="button" href="{{ url_for('import_page') }}">Import your history</a>
+      <a class="button ghost" href="{{ url_for('index') }}">Home</a>
+    {% else %}
+      <a class="button" href="{{ request.referrer if request.referrer and request.referrer.startswith(request.host_url) else url_for('index') }}">Go back</a>
+      <a class="button ghost" href="{{ url_for('index') }}">Home</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

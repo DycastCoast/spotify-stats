@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Playlists · Listening Stats{% endblock %}
+{% macro mosaic(tracks, cls="") %}
+  <span class="mosaic {{ cls }} {{ 'single' if tracks | length < 4 }}" aria-hidden="true">
+    {% for t in (tracks if tracks | length >= 4 else tracks[:1]) %}<img alt="" data-art-kind="track" data-art-track="{{ t }}">{% endfor %}
+  </span>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <h1>Playlists</h1>
+  <p class="small">Made from how you actually listen: which songs you play together, when, and what your friends play.
+    Spotify doesn't let small apps use its own recommendations, so these come from your history instead.</p>
+</div>
+
+{% if now %}
+<a class="card pl-now" href="{{ url_for('playlist_page', kind='now', level=level) }}">
+  {{ mosaic(now.songs | map(attribute='track') | list, "big") }}
+  <span class="pl-now-text">
+    <span class="hero-kicker">Right now</span>
+    <span class="pl-now-title">{{ now.title }}</span>
+    <span class="small">{{ now.subtitle }}</span>
+    <span class="inline-link">Open the playlist →</span>
+  </span>
+</a>
+{% endif %}
+
+<section class="card" id="moods">
+  <div class="card-head pl-moods-head">
+    <div><h2>Your moods</h2>
+      <p class="small">Groups of songs you play together, described by when you play them. Rename any of them and the name sticks.</p></div>
+    <form method="get" class="pl-slider" id="level-form">
+      <label for="level">{{ level_names[level] }}</label>
+      <input type="range" id="level" name="level" min="1" max="4" step="1" value="{{ level }}" aria-label="How specific the moods are">
+      <span class="small">Broad · Specific</span>
+    </form>
+  </div>
+  {% if moods %}
+  <ul class="mood-grid">
+    {% for g in moods %}
+      <li class="mood {{ 'extra' if loop.index > 12 }}" id="mood-{{ g.id }}">
+        <a class="mood-link" href="{{ url_for('playlist_page', kind='mood', level=level, id=g.id) }}">
+          {{ mosaic(g.covers) }}
+          <span class="mood-name">{{ g.name }}</span>
+        </a>
+        <span class="mood-tags">{% for t in g.tags %}<span class="tag">{{ t }}</span>{% endfor %}</span>
+        <span class="small mood-size">{{ g.size }} songs · {{ g.hours }} h</span>
+        <details class="mood-rename">
+          <summary aria-label="Rename this mood">Rename</summary>
+          <form method="post" action="{{ url_for('mood_rename') }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="level" value="{{ level }}"><input type="hidden" name="id" value="{{ g.id }}">
+            <input name="name" value="{{ g.name if g.renamed }}" placeholder="{{ g.auto_name }}" maxlength="60" aria-label="New name">
+            <button type="submit" class="button small-button">Save</button>
+          </form>
+        </details>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if moods | length > 12 %}<button type="button" class="link-btn" id="moods-more">Show all {{ moods | length }}</button>{% endif %}
+  {% else %}<p class="small">Not enough listening yet to find moods.</p>{% endif %}
+</section>
+
+<div class="two-col">
+  <section class="card">
+    <div class="card-head"><h2>More like this</h2>
+      <p class="small">Pick a song: you get what's played around it, by you and your friends, including songs you've never heard.
+        (Every song page has a "More like this" button too.)</p></div>
+    <div class="pl-search">
+      <input type="search" id="like-q" placeholder="Search your songs…" autocomplete="off" aria-label="Search for a song">
+      <ul id="like-results" class="pl-results"></ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Time machine</h2></div>
+    <ul class="pl-links">
+      <li><a href="{{ url_for('playlist_page', kind='forgotten') }}"><b>Forgotten favourites</b><span class="small">Loved, then left behind</span></a></li>
+      <li><a href="{{ url_for('playlist_page', kind='comfort') }}"><b>Comfort songs</b><span class="small">The ones you keep coming back to</span></a></li>
+    </ul>
+    {% if seasons %}
+    <form method="get" action="{{ url_for('playlist_page') }}" class="pl-season">
+      <input type="hidden" name="kind" value="season">
+      <label for="pick" class="small">A season of the past</label>
+      <select name="pick" id="pick">{% for y, s in seasons %}<option value="{{ y }}:{{ s }}">{{ s | capitalize }} {{ y }}</option>{% endfor %}</select>
+      <button type="submit" class="button small-button">Go</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+{% if friends %}
+<section class="card">
+  <div class="card-head"><h2>With friends</h2></div>
+  <ul class="pl-friends">
+    {% for f in friends %}
+      <li><b>{{ f.display_name or f.id }}</b>
+        <a class="button ghost small-button" href="{{ url_for('playlist_page', kind='blend', with=f.id) }}">Blend with {{ f.display_name or f.id }}</a>
+        <a class="button ghost small-button" href="{{ url_for('playlist_page', kind='wayin', with=f.id) }}">A way into their music</a></li>
+    {% endfor %}
+  </ul>
+  {% if friends | length > 1 %}
+  <form method="get" action="{{ url_for('playlist_page') }}" class="pl-group">
+    <input type="hidden" name="kind" value="group">
+    <span class="small">Group mix with:</span>
+    {% for f in friends %}<label class="tick"><input type="checkbox" name="with" value="{{ f.id }}" checked> {{ f.display_name or f.id }}</label>{% endfor %}
+    <button type="submit" class="button small-button">Make it</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+<script>
+  // Moods past the first 12 are hidden until "Show all".
+  const more = document.getElementById("moods-more");
+  if (more) more.addEventListener("click", () => {
+    const grid = document.querySelector(".mood-grid");
+    grid.classList.toggle("all");
+    more.textContent = grid.classList.contains("all") ? "Show fewer" : `Show all ${grid.children.length}`;
+    if (window.art) art.lazy(grid);
+  });
+
+  // The slider reloads the page with the new level.
+  const slider = document.getElementById("level");
+  if (slider) slider.addEventListener("change", () => document.getElementById("level-form").submit());
+
+  // "More like this" search: the same search the top bar uses, but each result opens its playlist.
+  const q = document.getElementById("like-q"), out = document.getElementById("like-results");
+  let timer;
+  if (q) q.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (q.value.trim().length < 2) { out.replaceChildren(); return; }
+      const res = await (await fetch(`/search?format=json&q=${encodeURIComponent(q.value.trim())}`)).json();
+      out.replaceChildren(...res.songs.map(s => {
+        const li = document.createElement("li"), a = document.createElement("a");
+        a.href = `/playlist?kind=like&track=${encodeURIComponent(s.track)}`;
+        const b = document.createElement("b"); b.textContent = s.name;
+        const sm = document.createElement("span"); sm.className = "small"; sm.textContent = ` ${s.artist}`;
+        a.append(b, sm); li.append(a); return li;
+      }));
+    }, 200);
+  });
+</script>
+{% endblock %}

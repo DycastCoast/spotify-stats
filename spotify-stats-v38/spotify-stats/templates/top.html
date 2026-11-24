@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Top · Listening Stats{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <span class="hero-kicker">Spotify's own ranking</span>
+    <h1>Your top</h1>
+  </div>
+  <div class="tabs">
+    {% for key, label in time_ranges.items() %}
+      <a href="{{ url_for('top', range=key) }}" class="{{ 'active' if key == time_range }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+<p class="small lead-note">Straight from Spotify, based on your recent listening. For exact counts across your
+  whole history, see <a href="{{ url_for('overview', tab='what') }}">Overview</a>.</p>
+
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <h2>Top {{ time_ranges[time_range] | lower }}</h2>
+    <div class="seg-toggle" role="group" aria-label="Artists or songs" data-part="0">
+      <button type="button" data-value="artists" class="active">Artists</button>
+      <button type="button" data-value="songs">Songs</button>
+    </div>
+  </div>
+
+  <div data-key="artists">
+    {% if artists %}
+      <ol class="artist-grid">
+        {% for artist in artists %}
+          <li class="{{ 'extra' if loop.index > 10 }}">
+            {% set link = url_for('artist_page', name=artist.name, who=who) if artist.name in known_artists else artist.external_urls.spotify %}
+            <a href="{{ link }}" {% if artist.name not in known_artists %}target="_blank" rel="noopener"{% endif %}>
+              <div class="cover round">
+                {% if artist.images %}<img src="{{ artist.images | image }}" alt="" loading="lazy">{% endif %}
+                <span class="rank">{{ loop.index }}</span>
+              </div>
+              <span class="name">{{ artist.name }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="empty">Not enough listening in this period yet.</p>
+    {% endif %}
+  </div>
+
+  <div data-key="songs" hidden>
+    {% if tracks %}
+      <div class="more-wrap">
+        <ol class="ranked">
+          {% for track in tracks %}
+            <li class="has-art {{ 'extra' if loop.index > 10 }}">
+              <span class="rank-num">{{ loop.index }}</span>
+              {% if track.album.images %}<img class="rank-art loaded" src="{{ track.album.images | image }}" alt="" loading="lazy">{% else %}<span class="rank-art"></span>{% endif %}
+              <span class="rank-text">
+                {% if track.id in known_tracks %}
+                  <a class="rank-name" href="{{ url_for('song', track_id=track.id, who=who) }}">{{ track.name }}</a>
+                {% else %}
+                  <a class="rank-name" href="{{ track.external_urls.spotify }}" target="_blank" rel="noopener">{{ track.name }}</a>
+                {% endif %}
+                <span class="rank-artist">{{ track.artists | map(attribute='name') | join(', ') }}</span>
+              </span>
+              <span class="rank-fig">{{ track.duration_ms | duration }}</span>
+            </li>
+          {% endfor %}
+        </ol>
+        {% if tracks | length > 10 %}<button type="button" class="more-btn">Show {{ tracks | length }}</button>{% endif %}
+      </div>
+    {% else %}
+      <p class="empty">Not enough listening in this period yet.</p>
+    {% endif %}
+  </div>
+  {% if artists | length > 10 %}
+    <button type="button" class="artists-more">Show all {{ artists | length }} artists</button>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "_entity_scripts.html" %}
+<script>
+  // Artists grid: the first 10, then all 20 on request.
+  const grid = document.querySelector(".artist-grid"), btn = document.querySelector(".artists-more");
+  if (grid && btn) {
+    const wrap = btn.closest(".switcher");
+    btn.addEventListener("click", () => {
+      grid.classList.toggle("expanded");
+      btn.textContent = grid.classList.contains("expanded") ? "Show 10" : "Show all {{ artists | length }} artists";
+    });
+    // the button only belongs to the artists view
+    wrap.querySelectorAll(".seg-toggle button").forEach(b => b.addEventListener("click", () => {
+      btn.hidden = b.dataset.value !== "artists";
+    }));
+  }
+</script>
+{% endblock %}

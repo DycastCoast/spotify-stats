@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% block title %}Overview · Listening Stats{% endblock %}
+{% block content %}
+
+{# ---------------------------------------------------------------- macros #}
+
+{# A row of highlight cards. Each has a label, a big value and a comparison line. #}
+{% macro highlights(cards) %}
+  {% if cards %}
+    <section class="highlights">
+      {% for c in cards %}
+        <div class="highlight {{ 'has-art' if c.art }}">
+          {% if c.art %}
+            <img class="hl-art {{ 'round' if c.art.kind == 'artist' }}" alt="" data-art-kind="{{ c.art.kind }}" data-art-track="{{ c.art.track }}">
+          {% endif %}
+          <div class="hl-body">
+            <span class="hl-label">{{ c.label }}</span>
+            {% if c.link and c.link.type == 'song' %}
+              <a class="hl-value" href="{{ url_for('song', track_id=c.link.track, who=who) }}">{{ c.value }}</a>
+            {% else %}
+              <span class="hl-value" {% if c.count %}data-count{% endif %}>{{ c.value }}</span>
+            {% endif %}
+            <span class="hl-detail">{{ c.detail }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+{% endmacro %}
+
+{# A ranked list: top 5 shown, the rest behind "Show 10". #}
+{% macro ranked_list(items, colour='#3987e5', empty='Nothing here yet.') %}
+  {% if items %}
+    <div class="more-wrap">
+      <ol class="ranked">
+        {% for s in items %}
+          <li class="{{ 'extra' if loop.index > 5 }} {{ 'has-art' if s.art }}" {% if s.tip %}data-tip="{{ s.tip }}"{% endif %}>
+            <span class="rank-num">{{ loop.index }}</span>
+            {% if s.art %}
+              <img class="rank-art {{ 'round' if s.art.kind == 'artist' }}" alt=""
+                   data-art-kind="{{ s.art.kind }}" data-art-track="{{ s.art.track }}">
+            {% endif %}
+            <span class="rank-text">
+              {% if s.link and s.link.type == 'song' %}
+                <a class="rank-name" href="{{ url_for('song', track_id=s.link.track, who=who) }}">{{ s.name }}</a>
+              {% elif s.link and s.link.type == 'artist' %}
+                <a class="rank-name" href="{{ url_for('artist_page', name=s.link.name, who=who) }}">{{ s.name }}</a>
+              {% elif s.link and s.link.type == 'album' %}
+                <a class="rank-name" href="{{ url_for('album_page', name=s.link.name, artist=s.link.artist, who=who) }}">{{ s.name }}</a>
+              {% else %}
+                <span class="rank-name">{{ s.name }}</span>
+              {% endif %}
+              {% if s.artist %}<span class="rank-artist">{{ s.artist }}</span>{% endif %}
+            </span>
+            <span class="rank-fig">{{ s.fig }}</span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if items | length > 5 %}<button type="button" class="more-btn">Show {{ items | length }}</button>{% endif %}
+    </div>
+  {% else %}
+    <p class="empty small">{{ empty }}</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro scale() %}
+  <div class="scale" aria-hidden="true">
+    <span class="small">Less</span>
+    {% for i in range(6) %}<span class="cell l{{ i }}"></span>{% endfor %}
+    <span class="small">More</span>
+  </div>
+{% endmacro %}
+
+{# ---------------------------------------------------------------- filters #}
+
+<!-- Page-wide filters: everything below follows them. Changing one reloads the page. -->
+<form class="filters" method="get" id="filters">
+  <h1>Overview</h1>
+  <input type="hidden" name="tab" value="{{ tab }}" id="tab-input">
+  <label>
+    <span>Person</span>
+    <select name="who" onchange="this.form.submit()">
+      {% for p in people %}
+        <option value="{{ p.id }}" {{ 'selected' if p.id == who }}>{{ p.display_name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span>Period</span>
+    <select name="year" onchange="this.form.submit()">
+      <option value="all">All time</option>
+      {% for y in years %}
+        <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if devices %}
+  <label>
+    <span>Device</span>
+    <select name="device" onchange="this.form.submit()">
+      <option value="">All devices</option>
+      {% for d in devices %}
+        <option value="{{ d }}" {{ 'selected' if d == device }}>{{ d }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <noscript><button type="submit">Show</button></noscript>
+</form>
+
+{% if device %}
+  <p class="filter-note small">Showing {{ device | lower }} listening only. Devices are recorded in Spotify exports, so plays
+    collected by the poller (which have no device) aren't included.</p>
+{% endif %}
+
+{% if not data or not data.has_plays %}
+  <p class="empty">No plays for this person, period and device.</p>
+{% else %}
+
+<!-- The hero: one big number and one comparison, then the smaller headline numbers -->
+{% if hero %}
+<section class="hero-stat {{ 'themed' if page_theme }}">
+  <div class="hero-text">
+    <span class="hero-kicker">{{ hero.kicker }}</span>
+    <div class="hero-main">
+      <span class="hero-number" data-count>{{ hero.number }}</span>
+      <span class="hero-unit">{{ hero.unit }}</span>
+    </div>
+    <span class="hero-compare">{{ hero.compare }}</span>
+  </div>
+  {% if hero.cover %}
+  <figure class="hero-cover" id="hero-cover" data-art-kind="track" data-art-track="{{ hero.cover.track }}">
+    <div class="cover-frame">
+      <img alt="Cover of {{ hero.cover.name }}" {% if hero.cover.url %}src="{{ hero.cover.url }}"{% endif %}>
+    </div>
+    <figcaption>
+      <span class="cover-label">Top song</span>
+      <span class="cover-name">{{ hero.cover.name }}</span>
+      <span class="cover-artist">{{ hero.cover.artist }}</span>
+      <span class="cover-colour" id="cover-colour" {% if not page_theme %}hidden{% endif %}>
+        <span class="swatch" style="background: var(--accent)"></span>
+        <span id="colour-words" data-prefix="{{ hero.colour_prefix }}">{% if page_theme %}{{ hero.colour_prefix }} {{ page_theme.name }}{% endif %}</span>
+      </span>
+    </figcaption>
+  </figure>
+  {% endif %}
+</section>
+{% endif %}
+<section class="tiles">
+  {% for label, value in data.tiles %}
+    <div class="tile"><span class="tile-label">{{ label }}</span><span class="tile-value" data-count>{{ value }}</span></div>
+  {% endfor %}
+</section>
+
+<!-- Tabs -->
+<nav class="page-tabs" role="tablist">
+  {% for key, label in [('when', 'When'), ('what', 'What'), ('how', 'How you listen')] %}
+    <button type="button" role="tab" data-tab="{{ key }}" class="{{ 'active' if key == tab }}"
+            aria-selected="{{ 'true' if key == tab else 'false' }}">{{ label }}</button>
+  {% endfor %}
+</nav>
+
+{# ================================================================ WHEN #}
+<div class="tab-panel" data-panel="when" {{ 'hidden' if tab != 'when' }}>
+  {{ highlights(data.highlights.when + ([memory] if memory else [])) }}
+
+  {% set dc = data.day_chart %}
+  <section class="card switcher">
+    <div class="card-head card-head-row">
+      <div>
+        <h2>Your average day</h2>
+        <p class="small">How much you listen at each time of day (UK time) compared with your
+          average: ×2 = twice your usual amount, ×½ = half. The haze shows how much it varies from
+          week to week. Hover for the actual minutes.</p>
+      </div>
+      <div class="seg-toggle" role="group" aria-label="Which days" data-part="0">
+        {% for key, label in [('all', 'All days'), ('weekdays', 'Weekdays'), ('weekends', 'Weekends')] if key in dc.views %}
+          <button type="button" data-value="{{ key }}" class="{{ 'active' if loop.first }}">{{ label }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% for key, v in dc.views.items() %}
+    <svg class="daychart" data-key="{{ key }}" viewBox="0 0 {{ dc.w }} {{ dc.h }}" {{ 'hidden' if not loop.first }}
+         role="img" aria-label="Listening across the day compared with your average ({{ key }})">
+      <defs>
+        <filter id="soft-{{ key }}" x="0" y="-10%" width="100%" height="120%">
+          <feGaussianBlur stdDeviation="0 3"/>
+        </filter>
+        <linearGradient id="grad-{{ key }}" gradientUnits="userSpaceOnUse" x1="0" y1="{{ dc.zero_y }}" x2="0" y2="{{ dc.max_y }}">
+          {% for offset, colour in v.stops %}<stop offset="{{ offset }}" stop-color="{{ colour }}"/>{% endfor %}
+        </linearGradient>
+        <clipPath id="plot-{{ key }}"><rect x="{{ dc.left }}" y="{{ dc.top }}" width="{{ dc.right - dc.left }}" height="{{ dc.bottom - dc.top }}"/></clipPath>
+      </defs>
+      {% for value, ty in dc.y_ticks %}
+        <line class="grid" x1="{{ dc.left }}" x2="{{ dc.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+        <text class="tick" x="{{ dc.left - 8 }}" y="{{ ty + 4 }}" text-anchor="end">{{ value }}</text>
+      {% endfor %}
+      {% for label, tx in dc.x_ticks %}
+        <text class="tick" x="{{ tx }}" y="{{ dc.h - 8 }}" text-anchor="middle">{{ label }}</text>
+      {% endfor %}
+      <g clip-path="url(#plot-{{ key }})"><g filter="url(#soft-{{ key }})">
+        {% for pts in v.bands %}<polygon class="band" points="{{ pts }}" fill="url(#grad-{{ key }})"/>{% endfor %}
+      </g></g>
+      <line class="avg-line" x1="{{ dc.left }}" x2="{{ dc.right }}" y1="{{ dc.one_y }}" y2="{{ dc.one_y }}"/>
+      <text class="avg-label" x="{{ dc.right - 4 }}" y="{{ dc.one_y - 6 }}" text-anchor="end">{{ dc.baseline_label }}</text>
+      <polyline class="mean-line" points="{{ v.line }}" stroke="url(#grad-{{ key }})"/>
+      {% for sx in dc.slot_x %}
+        <rect class="hover-col" x="{{ sx }}" y="{{ dc.top }}" width="{{ dc.slot_w }}" height="{{ dc.bottom - dc.top }}"
+              data-tip="{{ v.tips[loop.index0] }}"/>
+      {% endfor %}
+    </svg>
+    {% endfor %}
+    <div class="day-legend small">
+      <span><span class="swatch" style="background:#3987e5"></span>quieter than your average</span>
+      <span><span class="swatch" style="background:#8f8d86"></span>about average</span>
+      <span><span class="swatch" style="background:#d95926"></span>busier than average</span>
+    </div>
+  </section>
+
+  {% if data.calendar %}
+  <section class="card">
+    <div class="card-head">
+      <h2>Every day of {{ data.calendar.year }}</h2>
+      <p class="small">{{ data.calendar.total }} over {{ data.calendar.days }} days with listening.
+        {% if not year %}Pick a year above to see another one.{% endif %} Hover a day for its minutes.</p>
+    </div>
+    <div class="calendar-wrap">
+      <div class="calendar" style="--weeks: {{ data.calendar.weeks | length }}">
+        <span></span>
+        {% for m in data.calendar.months %}<span class="axis month">{{ m }}</span>{% endfor %}
+        {% for d in range(7) %}
+          <span class="axis day">{{ ['Mon','','Wed','','Fri','',''][d] }}</span>
+          {% for week in data.calendar.weeks %}
+            {% set c = week[d] %}
+            {% if c %}<span class="cell l{{ c.level }}" data-tip="{{ c.tip }}"></span>{% else %}<span></span>{% endif %}
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+    {{ scale() }}
+  </section>
+  {% endif %}
+</div>
+
+{# ================================================================ WHAT #}
+<div class="tab-panel" data-panel="what" {{ 'hidden' if tab != 'what' }}>
+  {{ highlights(data.highlights.what + ([found_card] if found_card else [])) }}
+
+  <section class="card switcher">
+    <div class="card-head card-head-row">
+      <h2>Your top
+        <select class="inline-select" data-part="0" aria-label="Top what">
+          <option value="artists">artists</option>
+          <option value="songs">songs</option>
+          <option value="albums">albums</option>
+        </select>
+      </h2>
+      <div class="seg-toggle" role="group" aria-label="Rank by" data-part="1">
+        <button type="button" data-value="time" class="active">Listening time</button>
+        <button type="button" data-value="plays">Plays</button>
+      </div>
+    </div>
+    {% for kind in ['artists', 'songs', 'albums'] %}
+      {% for measure in ['time', 'plays'] %}
+        <div data-key="{{ kind }}-{{ measure }}" {{ 'hidden' if not (kind == 'artists' and measure == 'time') }}>
+          {{ ranked_list(data.top[kind][measure]) }}
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </section>
+
+  {% if data.starts %}
+  {% set st = data.starts %}
+  <section class="card switcher">
+    <div class="card-head card-head-row">
+      <div>
+        <h2>Songs by how they started</h2>
+        <p class="small">"Came on by itself" covers Spotify's autoplay and your own playlists or albums carrying on.</p>
+      </div>
+      <div class="seg-toggle" role="group" aria-label="Which list" data-part="0">
+        <button type="button" data-value="picked" class="active">You put on most</button>
+        <button type="button" data-value="played_on">Came on most</button>
+        <button type="button" data-value="hidden">Hidden favourites</button>
+      </div>
+    </div>
+    <div data-key="picked">{{ ranked_list(st.lists.picked, '#3987e5') }}</div>
+    <div data-key="played_on" hidden>{{ ranked_list(st.lists.played_on, '#d95926') }}</div>
+    <div data-key="hidden" hidden>
+      <p class="small list-intro">Songs that came on by themselves 10+ times and you (almost) never skipped,
+        but you've put on yourself once at most. Maybe they deserve a playlist.</p>
+      {{ ranked_list(st.lists.hidden, '#0ca30c', 'No hidden favourites in this period.') }}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+{# ================================================================ HOW #}
+<div class="tab-panel" data-panel="how" {{ 'hidden' if tab != 'how' }}>
+  {% if data.starts %}
+  {{ highlights(data.highlights.how) }}
+
+  {% set st = data.starts %}
+  <section class="card">
+    <div class="card-head">
+      <h2>How songs start</h2>
+      <p class="small">Share of listening time by what started each song.
+        {{ st.shuffle_pct }}% of the "came on by itself" time was on shuffle.</p>
+    </div>
+    <div class="segbar">
+      {% for s in st.segments if s.pct > 0 %}
+        <span style="flex: {{ s.pct }}; background: {{ s.colour }}" data-tip="{{ s.label }} · {{ s.pct }}% · {{ s.hours }}">
+          {% if s.pct >= 8 %}{{ s.pct }}%{% endif %}
+        </span>
+      {% endfor %}
+    </div>
+    <ul class="legend">
+      {% for s in st.segments %}
+        <li><span class="swatch" style="background: {{ s.colour }}"></span>{{ s.label }} <b>{{ s.pct }}%</b></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% set sk = data.skips %}
+  <section class="card switcher">
+    <div class="card-head card-head-row"><h2>Skipping</h2>
+      <a class="see-all" href="{{ url_for('skips_page', who=who) }}">All skip stats →</a></div>
+    <div class="skip-stats">
+      <div><span class="big">{{ sk.rate }}%</span><span class="small">of songs skipped<br>(pressed "next")</span></div>
+      {% if sk.median_seconds is not none %}
+      <div><span class="big">{{ sk.median_seconds }} s</span><span class="small">typical time before<br>skipping (median)</span></div>
+      {% endif %}
+    </div>
+
+    <div class="two-col lists">
+      <div>
+        <h3>How quickly you skip</h3>
+        <ul class="meters">
+          {% for b in sk.timing %}
+            <li data-tip="{{ b.pct }}% of skips happen {{ b.label | lower }} into a song">
+              <span class="meter-name">{{ b.label }}</span>
+              <span class="meter-bar"><span style="width: {{ b.bar }}%"></span></span>
+              <span class="meter-fig">{{ b.pct }}%</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <div class="list-head">
+          <h3>Songs</h3>
+          <div class="seg-toggle small-toggle" role="group" aria-label="Which songs" data-part="0">
+            <button type="button" data-value="most" class="active">Most skipped</button>
+            <button type="button" data-value="never">Always let play</button>
+          </div>
+        </div>
+        <div data-key="most">
+          {{ ranked_list(sk.lists.most, '#3987e5', 'Not enough repeat plays yet.') }}
+          <p class="small note">Songs that came up at least 10 times. Hover for the counts.</p>
+        </div>
+        <div data-key="never" hidden>
+          {{ ranked_list(sk.lists.never, '#0ca30c', 'Not enough repeat plays yet.') }}
+          <p class="small note">Skipped 5% of the time or less, most played first.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% if data.device_split %}
+  <section class="card">
+    <div class="card-head">
+      <h2>By device</h2>
+      <p class="small">Pick a device in the filters above to see everything for just that device.</p>
+    </div>
+    <ul class="meters">
+      {% for d in data.device_split %}
+        <li data-tip="{{ d.name }}: {{ d.share }}% of listening, {{ d.skip_rate }}% skipped">
+          <span class="meter-name">{{ d.name }}</span>
+          <span class="meter-bar"><span style="width: {{ d.share }}%"></span></span>
+          <span class="meter-fig">{{ d.share }}%</span>
+          <span class="meter-sub">of your listening · {{ d.skip_rate }}% skipped</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% else %}
+  <section class="card">
+    <h2>How you listen</h2>
+    <p class="small">Skips, shuffle and "you put it on vs came on by itself" need data from a Spotify export.
+      Import one with <code>import_export.py</code> to see them.</p>
+  </section>
+  {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // --- Motion: count numbers up, draw the chart line, fade cards in as you scroll.
+  // Each tab animates the first time it's opened. All of it is skipped when animations are off.
+  const animated = new Set();
+  function animatePanel(panel) {
+    if (animated.has(panel)) return;
+    animated.add(panel);
+    panel.querySelectorAll("[data-count]").forEach(el => motion.countUp(el));
+    panel.querySelectorAll("svg.daychart:not([hidden]) .mean-line").forEach(l => motion.drawLine(l));
+    motion.reveal(".card, .highlight", panel);
+  }
+  document.querySelectorAll(".hero-stat [data-count], .tiles [data-count]").forEach(el => motion.countUp(el));
+  document.querySelectorAll(".tab-panel:not([hidden])").forEach(animatePanel);
+
+  // --- Tabs: show one panel, remember the choice in the URL and in the filter form
+  // (so changing Person/Period/Device keeps you on the same tab).
+  const tabInput = document.getElementById("tab-input");
+  document.querySelectorAll(".page-tabs button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".page-tabs button").forEach(b => {
+        b.classList.toggle("active", b === btn);
+        b.setAttribute("aria-selected", b === btn);
+      });
+      document.querySelectorAll(".tab-panel").forEach(p => {
+        p.toggleAttribute("hidden", p.dataset.panel !== tab);
+        if (p.dataset.panel === tab) animatePanel(p);
+      });
+      if (tabInput) tabInput.value = tab;
+      const url = new URL(location.href);
+      url.searchParams.set("tab", tab);
+      try { history.replaceState(null, "", url); } catch (e) {}   // not allowed in some saved copies
+    });
+  });
+
+  // --- Switchers: a card with controls (toggles and/or a dropdown) and several
+  // panes. The controls' values joined with "-" name the pane to show,
+  // e.g. dropdown "songs" + toggle "plays" -> pane "songs-plays".
+  document.querySelectorAll(".switcher").forEach(card => {
+    const parts = [...card.querySelectorAll("[data-part]")]
+      .sort((a, b) => a.dataset.part - b.dataset.part);
+    const value = el => el.tagName === "SELECT" ? el.value : el.querySelector("button.active").dataset.value;
+    const update = () => {
+      const key = parts.map(value).join("-");
+      // SVG elements have no .hidden shortcut, so set the attribute directly.
+      card.querySelectorAll("[data-key]").forEach(p => {
+        p.toggleAttribute("hidden", p.dataset.key !== key);
+        if (p.dataset.key !== key) return;
+        p.querySelectorAll(".mean-line").forEach(l => motion.drawLine(l, 900));   // redraw the line
+        p.classList.remove("swap-in"); p.getBoundingClientRect(); p.classList.add("swap-in");
+      });
+    };
+    parts.forEach(part => {
+      if (part.tagName === "SELECT") {
+        part.addEventListener("change", update);
+      } else {
+        part.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+          part.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+          update();
+        }));
+      }
+    });
+  });
+
+  // --- "Show 10" / "Show 5"
+  document.querySelectorAll(".more-btn").forEach(btn => {
+    const total = btn.textContent;
+    btn.addEventListener("click", () => {
+      const wrap = btn.closest(".more-wrap");
+      wrap.classList.toggle("expanded");
+      btn.textContent = wrap.classList.contains("expanded") ? "Show 5" : total;
+    });
+  });
+</script>
+{% endblock %}

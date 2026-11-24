@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ s.name }} · Listening Stats{% endblock %}
+{% block content %}
+
+<!-- The song: its cover (which also sets the page colour), name, and where it ranks -->
+<section class="entity-hero {{ 'themed' if page_theme }}">
+  <figure class="hero-cover" id="hero-cover" data-art-kind="track" data-art-track="{{ s.track }}">
+    <div class="cover-frame big"><img alt="Cover of {{ s.name }}" {% if cover_url %}src="{{ cover_url }}"{% endif %}></div>
+  </figure>
+  <div class="entity-text">
+    <span class="hero-kicker">Song{% if s.album %} · from <a href="{{ url_for('album_page', name=s.album, artist=s.artist, who=who) }}">{{ s.album }}</a>{% endif %}{% if whose[0] != "Your" %} · in {{ whose[0] }} history{% endif %}</span>
+    <h1 class="entity-name {{ 'long' if s.name | length > 14 }} {{ 'very-long' if s.name | length > 40 }}">{{ s.name }}</h1>
+    <a class="entity-sub" href="{{ url_for('artist_page', name=s.artist, who=who) }}">{{ s.artist }}</a>
+    <span class="hero-compare">{{ whose[0] }} #{{ '{:,}'.format(s.rank) }} song of all time (out of {{ '{:,}'.format(s.of) }})
+      · {{ s.artist_share }}% of {{ whose[1] }} time with {{ s.artist }}</span>
+  </div>
+</section>
+
+{% set vs_url = url_for('vs_panel', kind='song', track=s.track, who=who) %}
+{% include "_vs_button.html" %}
+<p class="like-this"><a class="button ghost" href="{{ url_for('playlist_page', kind='like', track=s.track) }}">More like this →</a></p>
+
+<section class="tiles">
+  {% for label, value in s.tiles %}
+    <div class="tile"><span class="tile-label">{{ label }}</span><span class="tile-value" {% if value[:1].isdigit() and ' ' not in value[:-2] %}data-count{% endif %}>{{ value }}</span></div>
+  {% endfor %}
+</section>
+
+{{ m.highlights([
+  {"label": "How it started", "value": s.first.date,
+   "detail": ("It came on by itself: it found you" if s.first.found == "found you"
+              else "You put it on yourself" if s.first.found
+              else s.first.started if s.first.started
+              else "First heard through the poller, so how it started isn't recorded")},
+  {"label": "Biggest day", "value": (s.biggest_day.plays ~ " plays") if s.biggest_day else None, "count": true,
+   "detail": "on " ~ s.biggest_day.date if s.biggest_day else ""},
+  {"label": "Longest loop", "value": (s.loop.count ~ " in a row") if s.loop else None, "count": true,
+   "detail": "back to back on " ~ s.loop.date if s.loop else ""},
+  {"label": "The comeback", "value": (s.comeback.months ~ " months away") if s.comeback else None, "count": true,
+   "detail": ("gone from " ~ s.comeback.from ~ ", back in " ~ s.comeback.to) if s.comeback else ""},
+]) }}
+
+{% if s.history %}
+  {{ m.history(s.history, whose[0] ~ " history with it", "Plays per month, from the first time you played it.") }}
+{% endif %}
+
+<div class="two-col">
+  {% if s.when %}{{ m.when(s.when, "song") }}{% endif %}
+  {% if s.treatment %}{{ m.treatment(s.treatment, "song") }}{% endif %}
+</div>
+
+{% if s.before or s.after %}
+<section class="card switcher">
+  <div class="card-head card-head-row">
+    <div>
+      <h2>Its neighbours</h2>
+      <p class="small">What you play right before and after it, in the same listening session.</p>
+    </div>
+    <div class="seg-toggle" role="group" aria-label="Before or after" data-part="0">
+      <button type="button" data-value="before" class="active">Played before it</button>
+      <button type="button" data-value="after">Played after it</button>
+    </div>
+  </div>
+  {% for key, items in [("before", s.before), ("after", s.after)] %}
+    <div data-key="{{ key }}" {{ 'hidden' if key == 'after' }}>
+      {{ m.songs(items, who, "No regular neighbours.") }}
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}{% include "_entity_scripts.html" %}{% endblock %}

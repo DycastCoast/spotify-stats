@@ -1,0 +1,19 @@
+# Never copied into the image: personal data, secrets, and local clutter.
+*.db
+*.db-journal
+*.zip
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.log
+uploads/
+snapshot/
+data/
+.git/
+.github/
+k8s/secret*.yaml
+cache/

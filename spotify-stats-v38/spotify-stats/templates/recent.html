@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Recent · Listening Stats{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <span class="hero-kicker">Live from Spotify</span>
+    <h1>Recently played</h1>
+  </div>
+</div>
+<p class="small lead-note">Your last {{ days | sum(attribute='plays', start=[]) | length }} plays, in UK time.
+  Spotify only keeps the most recent 50, which is why the poller saves them every 30 minutes.</p>
+
+{% for day in days %}
+<section class="card day-group">
+  <h2>{{ day.label }}</h2>
+  <ol class="ranked">
+    {% for p in day.plays %}
+      {% set track = p.track %}
+      <li class="has-art">
+        <span class="rank-num time">{{ p.time }}</span>
+        {% if track.album.images %}<img class="rank-art loaded" src="{{ track.album.images | image }}" alt="" loading="lazy">{% else %}<span class="rank-art"></span>{% endif %}
+        <span class="rank-text">
+          {% if track.id in known_tracks %}
+            <a class="rank-name" href="{{ url_for('song', track_id=track.id, who=who) }}">{{ track.name }}</a>
+          {% else %}
+            <a class="rank-name" href="{{ track.external_urls.spotify }}" target="_blank" rel="noopener">{{ track.name }}</a>
+          {% endif %}
+          <span class="rank-artist">{{ track.artists | map(attribute='name') | join(', ') }}</span>
+        </span>
+        <span class="rank-fig">{{ track.duration_ms | duration }}</span>
+      </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+  <p class="empty">Nothing played recently.</p>
+{% endfor %}
+
+{% endblock %}
+{% block scripts %}<script>motion.reveal(".card");</script>{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Trivia · Listening Stats{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Trivia</h1>
+  <p class="small">Ten questions made fresh from your own history. Questions you've had won't come back for a month.</p>
+</div>
+
+{% if not questions %}
+<section class="card"><p class="empty">Not enough listening yet to make a quiz. Come back once there's more history.</p></section>
+{% else %}
+<section class="hero-stat tv-hero">
+  <div class="hero-text">
+    <span class="hero-kicker">Do you know you?</span>
+    <div class="hero-main">
+      <span class="hero-number" id="tv-score">0</span>
+      <span class="hero-unit">/ {{ questions | length }} right</span>
+    </div>
+    <span class="hero-compare">{% if best %}Your best: {{ best.best }}/10 over {{ best.rounds }} round{{ 's' if best.rounds != 1 }}.{% else %}Your first round. No pressure.{% endif %}</span>
+  </div>
+  <ol class="tv-dots" aria-label="Progress">
+    {% for q in questions %}<li class="{{ 'now' if loop.first }}"><span class="visually-hidden">Question {{ loop.index }}</span></li>{% endfor %}
+  </ol>
+</section>
+
+<form id="tv-form" hidden><input type="hidden" name="csrf" value="{{ csrf }}"></form>
+
+{% for q in questions %}
+<section class="card tv-q" data-answer="{{ q.answer }}" {% if not loop.first %}hidden{% endif %} aria-live="polite">
+  <p class="hero-kicker tv-kind">{{ q.kind }} · {{ loop.index }} of {{ questions | length }}</p>
+  <h2 class="tv-prompt">{{ q.prompt }}</h2>
+  <div class="tv-opts n{{ q.options | length }}">
+    {% for o in q.options %}
+    <button type="button" class="tv-opt" data-i="{{ loop.index0 }}">
+      {% if o.track %}<img class="tv-art" alt="" data-art-kind="track" data-art-track="{{ o.track }}">{% endif %}
+      <span class="tv-label">{{ o.label }}</span>
+      {% if o.sub %}<span class="tv-sub">{{ o.sub }}</span>{% endif %}
+      {% if q.figures %}<span class="tv-fig" hidden>{{ q.figures[loop.index0] }}</span>{% endif %}
+    </button>
+    {% endfor %}
+  </div>
+  <div class="tv-after" hidden>
+    <p class="tv-reveal"><b class="tv-verdict"></b> {{ q.reveal }}</p>
+    <button type="button" class="button tv-next">{{ 'See your score' if loop.last else 'Next question →' }}</button>
+  </div>
+</section>
+{% endfor %}
+
+<section class="card tv-end" hidden aria-live="polite">
+  <p class="hero-kicker tv-kind">Round over</p>
+  <p class="tv-final"><span id="tv-final-score">0</span><span class="tv-final-of">/ {{ questions | length }}</span></p>
+  <p class="tv-final-line" id="tv-final-line"></p>
+  <p class="small" id="tv-best"></p>
+  <a class="button" href="{{ url_for('trivia_page') }}">Play another round</a>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const qs = [...document.querySelectorAll(".tv-q")];
+  if (!qs.length) return;
+  const dots = [...document.querySelectorAll(".tv-dots li")];
+  const scoreEl = document.getElementById("tv-score");
+  let score = 0;
+  const before = {{ best.best if best else -1 }};
+  const lines = [[10, "You know you."], [7, "Pretty self-aware."], [4, "A few surprises in there."], [0, "Do you even listen?"]];
+
+  qs.forEach((q, n) => {
+    const answer = +q.dataset.answer;
+    const opts = [...q.querySelectorAll(".tv-opt")];
+    opts.forEach(btn => btn.addEventListener("click", () => {
+      if (q.classList.contains("answered")) return;
+      q.classList.add("answered");
+      const right = +btn.dataset.i === answer;
+      if (right) score++;
+      scoreEl.textContent = score;
+      opts.forEach(o => {
+        o.disabled = true;
+        o.classList.add(+o.dataset.i === answer ? "right" : (o === btn ? "wrong" : "other"));
+        const fig = o.querySelector(".tv-fig");
+        if (fig) fig.hidden = false;
+      });
+      dots[n].className = right ? "right" : "wrong";
+      const verdict = q.querySelector(".tv-verdict");
+      verdict.textContent = right ? "Right." : "Not quite.";
+      verdict.className = "tv-verdict " + (right ? "right" : "wrong");
+      const after = q.querySelector(".tv-after");
+      after.hidden = false;
+      after.querySelector(".tv-next").focus();
+    }));
+    q.querySelector(".tv-next").addEventListener("click", () => {
+      q.hidden = true;
+      const next = qs[n + 1];
+      if (next) {
+        next.hidden = false;
+        if (dots[n + 1]) dots[n + 1].classList.add("now");
+        next.scrollIntoView({block: "nearest"});
+        next.querySelector(".tv-opt").focus();
+        return;
+      }
+      // The end: show the score and save it (the server keeps your best).
+      const end = document.querySelector(".tv-end");
+      end.hidden = false;
+      document.getElementById("tv-final-score").textContent = score;
+      document.getElementById("tv-final-line").textContent = lines.find(([min]) => score >= min)[1];
+      const body = new FormData(document.getElementById("tv-form"));
+      body.append("score", score);
+      fetch("{{ url_for('trivia_score') }}", {method: "POST", body})
+        .then(r => r.ok ? r.json() : null)
+        .then(b => { if (b) document.getElementById("tv-best").textContent =
+          score > before ? (before < 0 ? `Your first score: ${score}/10.` : `A new best, up from ${before}/10.`) : `Your best is ${b.best}/10.`; })
+        .catch(() => {});
+    });
+  });
+})();
+</script>
+{% endblock %}

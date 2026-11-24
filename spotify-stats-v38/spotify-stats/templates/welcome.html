@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Welcome · Listening Stats{% endblock %}
+{% block content %}
+<section class="hero welcome">
+  <span class="hero-kicker">Welcome{% if user and user.display_name %}, {{ user.display_name }}{% endif %}</span>
+  <h1>Your stats start here</h1>
+  <p>From now on the site keeps track of what you play on Spotify by itself. To see your whole history (years of it),
+    it needs Spotify's full history file.</p>
+</section>
+
+<div class="two-col welcome-steps">
+  <section class="card">
+    <span class="step-num">1</span>
+    <h2>Get your full history</h2>
+    <p class="small">On spotify.com: Account → Privacy settings → tick <b>Extended streaming history</b> → request it.
+      Spotify emails it within a few days (at most 30).</p>
+  </section>
+  <section class="card">
+    <span class="step-num">2</span>
+    <h2>Upload it here</h2>
+    <p class="small">When the email comes, download <b>my_spotify_data.zip</b> and upload it on the Import page, without unzipping it.</p>
+    <a class="button" href="{{ url_for('import_page') }}">Go to Import</a>
+  </section>
+</div>
+
+{% if friends %}
+<section class="card">
+  <div class="card-head"><h2>Meanwhile, look around</h2>
+    <p class="small">Your friends' pages work already. Comparing with them will work once your history is in.</p></div>
+  <ul class="welcome-friends">
+    {% for f in friends %}<li><a href="{{ url_for('overview', who=f.id) }}">{{ f.display_name or f.id }}'s stats →</a></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

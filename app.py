@@ -29,6 +29,7 @@ import poller
 import scheduler
 import skips
 import stats
+import trivia
 import trips
 import uploads
 import warm
@@ -55,6 +56,7 @@ if os.environ.get("PRODUCTION") == "1":
     app.config.update(SESSION_COOKIE_SECURE=True)
 
 init_db()  # creates stats.db and its tables on first run
+trivia.setup()
 
 # Behind a reverse proxy (Traefik in the cluster), the browser talks HTTPS to the proxy and the
 # proxy talks plain HTTP to us. These headers say what the browser really used, so Flask builds
@@ -105,6 +107,21 @@ app.add_template_filter(lambda songs: playlists.covers_of(songs), "covers")
 app.jinja_env.globals.update(geo_outline=geo.outline, geo_size=(geo.WIDTH, geo.HEIGHT))
 app.add_template_filter(charts.hour_lines, "hour_lines")
 app.add_template_filter(charts.trend_line, "trend_line")
+
+
+def ink(rgb):
+    """Black or white text, whichever is easier to read on this colour ("r, g, b")."""
+    try:
+        r, g, b = (int(x) / 255 for x in str(rgb).split(","))
+    except ValueError:
+        return "#000"
+    lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    light = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    # contrast with black is (L + .05) / .05; with white 1.05 / (L + .05): pick the larger
+    return "#000" if (light + 0.05) / 0.05 >= 1.05 / (light + 0.05) else "#fff"
+
+
+app.add_template_filter(ink, "ink")
 
 
 @app.template_filter("map_pins")
@@ -864,6 +881,30 @@ def playlists_page(sp):
                            now=playlists.right_now(me, level, limit=4),
                            friends=[p for p in stats.people() if p["id"] != me],
                            seasons=playlists.seasons_available(me)[:24])
+
+
+@app.route("/trivia")
+@login_required
+def trivia_page(sp):
+    """Do you know you? A fresh round of 10 questions from your own history."""
+    me = session["user_id"]
+    if stats.latest_play_id(me) is None:
+        return render_template("welcome.html", user=sp.current_user(),
+                               friends=[p for p in stats.people() if p["id"] != me])
+    return render_template("trivia.html", user=sp.current_user(), who=me,
+                           questions=trivia.make_round(me), best=trivia.best(me))
+
+
+@app.route("/trivia/score", methods=["POST"])
+@login_required
+def trivia_score(sp):
+    if request.form.get("csrf") != session.get("csrf"):
+        abort(400)
+    try:
+        score = int(request.form.get("score", ""))
+    except ValueError:
+        abort(400)
+    return jsonify(trivia.record(session["user_id"], score))
 
 
 @app.route("/playlist")

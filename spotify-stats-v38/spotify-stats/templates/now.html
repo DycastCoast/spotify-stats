@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Right now · Listening Stats{% endblock %}
+{% block content %}
+{% set you = whose[0] == "Your" %}
+{% set W = whose[1] %}
+{% set h = n.hero %}
+
+<form class="filters" method="get">
+  <h1>Right now</h1>
+  <label>
+    <span>Person</span>
+    <select name="who" onchange="this.form.submit()">
+      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if p.id == who }}>{{ p.display_name }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+{% if stale %}<p class="small stale-note">Showing the latest two weeks on record, up to <b>{{ n.as_of }}</b>.</p>{% endif %}
+
+<!-- Listening this second: filled in from /api/playing by the script at the bottom. -->
+<section class="card playing" id="playing" data-who="{{ who }}" data-you="{{ 1 if you else 0 }}" aria-live="polite">
+  <div class="np-card" hidden>
+    <img class="np-cover" alt="">
+    <div class="np-main">
+      <span class="hero-kicker np-kicker">Listening now</span>
+      <h2 class="np-song"><a></a></h2>
+      <p class="np-artist"></p>
+      <div class="np-progress" aria-hidden="true"><span></span></div>
+      <p class="np-times small"><span class="np-at"></span><span class="np-len"></span></p>
+    </div>
+    <ul class="np-facts"></ul>
+  </div>
+  <p class="np-message small">{% if can_see %}Checking Spotify…{% else %}{{ whose[0][:-2] }} hasn't switched on sharing what they're playing.{% endif %}</p>
+</section>
+{% if you %}
+<section class="card np-friends" id="np-friends">
+  <div class="card-head"><h2>Friends listening now</h2></div>
+  <ul class="np-friend-list"></ul>
+  <p class="small np-friends-empty">No friends are sharing what they're playing right now.</p>
+  <form method="post" action="{{ url_for('now_share') }}" class="np-share">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="on" value="{{ 0 if sharing else 1 }}">
+    <span class="small">{% if sharing %}Friends can see what you're playing.{% else %}Only you can see what you're playing.{% endif %}</span>
+    <button type="submit" class="button small-button">{{ "Stop sharing" if sharing else "Let friends see it" }}</button>
+  </form>
+</section>
+{% endif %}
+
+<!-- Headline: the song on repeat -->
+<section class="entity-hero {{ 'themed' if page_theme }}">
+  {% if h %}
+  <figure class="hero-cover" id="hero-cover" data-art-kind="track" data-art-track="{{ h.track }}">
+    <div class="cover-frame big"><img alt="Cover of {{ h.name }}"></div>
+  </figure>
+  {% endif %}
+  <div class="entity-text">
+    <span class="hero-kicker">On repeat · last 14 days</span>
+    {% if h %}
+      <h1 class="entity-name {{ 'long' if h.name | length > 14 }} {{ 'very-long' if h.name | length > 40 }}"><a href="{{ url_for('song', track_id=h.track, who=who) }}">{{ h.name }}</a></h1>
+      <span class="hero-compare">{{ h.artist }} · <b>{{ h.plays }} plays</b> since {{ h.since }}
+        {%- if h.new %}, and {{ 'you' if you else 'they' }} only found it this month{% elif h.ratio %}, {{ '%.0f' % h.ratio }}× {{ W }} usual{% else %}, after barely playing it before{% endif %}.</span>
+    {% else %}
+      <h1 class="entity-name">Nothing on heavy repeat</h1>
+      <span class="hero-compare">No song has been played much more than usual in the last two weeks.</span>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Pace and hours -->
+{% set p = n.pace %}
+<section class="tiles">
+  <div class="tile"><span class="tile-label">A day, last 14 days</span><span class="tile-value">{{ (p.now_min / 60) | round(1) }} h</span>
+    <span class="tile-sub">usual {{ (p.usual_min / 60) | round(1) }} h{% if p.ratio %} · {{ '%.1f' % p.ratio }}×{% endif %}</span></div>
+  <div class="tile"><span class="tile-label">Days listened</span><span class="tile-value">{{ p.active_days }} of 14</span></div>
+  <div class="tile"><span class="tile-label">After midnight</span><span class="tile-value">{{ n.hours.late_now }}%</span>
+    <span class="tile-sub">usual {{ n.hours.late_usual }}%</span></div>
+  <div class="tile"><span class="tile-label">New artists, 30 days</span><span class="tile-value">{{ n.finds_count }}</span>
+    <span class="tile-sub">{{ n.sticking }} sticking</span></div>
+</section>
+
+<div class="two-col">
+  <!-- On repeat -->
+  <section class="card">
+    <div class="card-head">
+      <h2>On repeat</h2>
+      <p class="small">Played far more in the last 14 days than {{ W }} usual for them (or brand new).</p>
+    </div>
+    {% if n.repeat %}
+    <ol class="ranked">
+      {% for s in n.repeat %}
+        <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+          <img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+          <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>
+            <span class="rank-artist">{{ s.artist }} · {% if s.new %}<span class="badge">new</span> {% elif s.ratio %}{{ '%.0f' % s.ratio }}× usual · {% endif %}{{ s.days }} day{{ 's' if s.days != 1 }} running</span></span>
+          <span class="rank-fig" data-tip="Since {{ s.since }}; a usual two weeks: about {{ s.usual }} plays">{{ s.plays }}×</span></li>
+      {% endfor %}
+    </ol>
+    {% else %}<p class="empty small">Nothing on heavy repeat right now.</p>{% endif %}
+  </section>
+
+  <!-- Rising and fading -->
+  <section class="card switcher">
+    <div class="card-head card-head-row">
+      <div>
+        <h2>Rising and fading</h2>
+        <p class="small">Share of {{ W }} last 30 days vs the year before.</p>
+      </div>
+      <div class="seg-toggle" role="group" aria-label="Rising or fading" data-part="0">
+        <button type="button" data-value="rising" class="active">Rising</button>
+        <button type="button" data-value="fading">Fading</button>
+      </div>
+    </div>
+    {% for key, rows in (("rising", n.rising), ("fading", n.fading)) %}
+    <div data-key="{{ key }}" {{ 'hidden' if key == 'fading' }}>
+      <ul class="shift-list">
+        {% for a in rows %}
+          <li data-tip="{{ a.name }}: {{ '%.1f' % a.now }}% of the last 30 days, {{ '%.1f' % a.before }}% of the year before">
+            {% if a.track %}<img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ a.track }}">{% else %}<span class="rank-art"></span>{% endif %}
+            <a class="shift-name" href="{{ url_for('artist_page', name=a.name, who=who) }}">{{ a.name }}</a>
+            <span class="shift-fig">{{ a.before | pct }} <span class="arrow">→</span> <b>{{ a.now | pct }}</b>{% if a.new %} <span class="badge">new</span>{% endif %}</span>
+          </li>
+        {% else %}<p class="empty small">Nobody {{ key }} much.</p>{% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+    <p class="small note">
+      {% if n.era %}Journey still calls this <b>{{ n.era | replace('The ', 'the ', 1) }}</b>. {% endif %}
+      {% if n.usual_overlap %}{{ W | capitalize }} last 30 days are {{ n.current_overlap }}% like the six months before
+        {%- if n.shift == 'shifting' %}, well below the usual {{ n.usual_overlap }}%: <b>something's shifting</b>, maybe a new era.
+        {%- elif n.shift == 'settled' %}, more than the usual {{ n.usual_overlap }}%: settled in.
+        {%- else %}, about the usual ({{ n.usual_overlap }}%).{% endif %}{% endif %}
+    </p>
+  </section>
+</div>
+
+<!-- Hours -->
+{% set hr = n.hours %}
+<section class="card">
+  <div class="card-head">
+    <h2>{{ 'Your' if you else 'Their' }} hours lately</h2>
+    <p class="small">When in the day {{ 'you' if you else 'they' }}'ve listened over the last 30 days (bright line) vs the year before (grey).
+      {% if hr.mid_now is not none and hr.mid_usual is not none %}
+        {% set shift = (hr.mid_now - hr.mid_usual + 24 + 12) % 24 - 12 %}
+        Half the day's listening is done by <b>{{ '%02d' % hr.mid_now }}:00</b>{% if shift >= 2 %}, {{ shift }} hours later than usual ({{ '%02d' % hr.mid_usual }}:00): the day's shifted late.{% elif shift <= -2 %}, {{ -shift }} hours earlier than usual ({{ '%02d' % hr.mid_usual }}:00).{% else %}, about the usual time.{% endif %}
+      {% endif %}</p>
+  </div>
+  {% set H = hr.profile | hour_lines %}
+  <svg class="hourlines" viewBox="0 0 {{ H.w }} {{ H.h }}" role="img" aria-label="Listening by hour: last 30 days vs the year before">
+    <line class="grid" x1="0" x2="{{ H.w }}" y1="{{ H.bottom }}" y2="{{ H.bottom }}"/>
+    <path class="line usual" d="{{ H.usual.line }}"/>
+    <path class="line-area" d="{{ H.now.area }}"/>
+    <path class="line" d="{{ H.now.line }}"/>
+    {% if H.now.peak %}<circle class="line-dot" cx="{{ H.now.peak[0] }}" cy="{{ H.now.peak[1] }}" r="5"/>{% endif %}
+    {% for label, tx in H.ticks %}<text class="tick" x="{{ tx }}" y="{{ H.h - 4 }}" text-anchor="middle">{{ label }}</text>{% endfor %}
+    {% for x in hr.profile %}{% set col = H.cols[loop.index0] %}
+      <rect class="hover-col" x="{{ col.x }}" y="0" width="{{ col.w }}" height="{{ H.bottom }}"
+            data-tip="{{ '%02d' % x.hour }}:00 · {{ '%.1f' % x.now }}% of the last 30 days, {{ '%.1f' % x.usual }}% usually"/>
+    {% endfor %}
+  </svg>
+  <ul class="legend"><li><span class="swatch line-now"></span>Last 30 days</li><li><span class="swatch line-usual"></span>The year before</li></ul>
+</section>
+
+<!-- Discovering or on the classics? Every listen labelled by how long you'd known the song -->
+{% if n.discovery %}{% set D = n.discovery %}
+<section class="card discovery mode-{{ D.mode }}">
+  <div class="card-head">
+    <h2>Discovering, or on the classics?</h2>
+    <p class="small">Every listen in the last 30 days, by how long {{ 'you' if you else 'they' }}'d known the song, compared with {{ W }} usual month.</p>
+  </div>
+  <p class="mode-line"><b>{{ D.line }}.</b>
+    {% if D.mode == 'exploring' %}{{ D.share[0] }}% of {{ W }} listening is songs first heard this month,
+      {% if D.ratio %}{{ '%.1f' % D.ratio }}× {{ W }} usual {{ D.usual[0] }}%{% endif %}.
+    {% elif D.mode == 'classics' %}{{ D.share[2] }}% is songs known for over a year (usually {{ D.usual[2] }}%), and only {{ D.share[0] }}% is new.
+    {% else %}{{ D.share[0] }}% new, {{ D.share[2] }}% classics: close to {{ W }} usual {{ D.usual[0] }}% / {{ D.usual[2] }}%.{% endif %}
+    {% if D.share[0] and D.new_songs_count %}Of the new music, {{ D.new_artist_share }}% is from artists {{ 'you' if you else 'they' }}'d never heard before.{% endif %}
+  </p>
+  <div class="mode-tiles">
+    {% for label, i, hint in [("New", 0, "first heard in the last 30 days"), ("This year", 1, "first heard 1 to 12 months ago"), ("Classics", 2, "known for over a year")] %}
+      <div class="tile mode-tile k{{ i }}"><span class="tile-label">{{ label }}</span>
+        <span class="tile-value">{{ D.share[i] }}%</span>
+        <span class="small">usually {{ D.usual[i] }}% · {{ hint }}</span></div>
+    {% endfor %}
+  </div>
+  {% set T = D.trend | trend_line %}
+  <svg class="trendline" viewBox="0 0 {{ T.w }} {{ T.h }}" role="img" aria-label="Share of new music each month">
+    {% for label, ty in T.ticks_y %}<line class="grid" x1="{{ T.left }}" x2="{{ T.right }}" y1="{{ ty }}" y2="{{ ty }}"/>
+      <text class="tick" x="{{ T.left - 6 }}" y="{{ ty + 4 }}" text-anchor="end">{{ label }}</text>{% endfor %}
+    <line class="overall" x1="{{ T.left }}" x2="{{ T.right }}" y1="{{ T.usual_y }}" y2="{{ T.usual_y }}"/>
+    <path class="line-area" d="{{ T.line.area }}"/>
+    <path class="line" d="{{ T.line.line }}"/>
+    {% if T.line.last %}<circle class="line-dot" cx="{{ T.line.last[0] }}" cy="{{ T.line.last[1] }}" r="5"/>{% endif %}
+    {% for label, tx in T.ticks_x %}<text class="tick" x="{{ tx }}" y="{{ T.h - 4 }}" text-anchor="{{ 'start' if loop.first else 'end' if loop.last else 'middle' }}">{{ label }}</text>{% endfor %}
+    {% for c in T.cols %}<rect class="hover-col" x="{{ c.x }}" y="0" width="{{ c.w }}" height="{{ T.bottom }}" data-tip="{{ c.tip }}"/>{% endfor %}
+  </svg>
+  <p class="small">New music each month (dashed: {{ W }} usual).</p>
+  <div class="two-col mode-lists">
+    <div><h3>New ones {{ 'you' if you else 'they' }}'re playing most</h3>
+      {% if D.new %}<ol class="ranked">{% for s in D.new %}
+        <li class="has-art"><span class="rank-num">{{ loop.index }}</span><img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+          <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>
+            <span class="rank-artist">{{ s.artist }} · {{ s.note }}</span></span>
+          <span class="rank-fig">{{ s.minutes }} min</span></li>{% endfor %}</ol>
+      {% else %}<p class="small empty">No new songs this month.</p>{% endif %}</div>
+    <div><h3>Old favourites {{ 'you' if you else 'they' }}'re leaning on</h3>
+      {% if D.classics %}<ol class="ranked">{% for s in D.classics %}
+        <li class="has-art"><span class="rank-num">{{ loop.index }}</span><img class="rank-art" alt="" data-art-kind="track" data-art-track="{{ s.track }}">
+          <span class="rank-text"><a class="rank-name" href="{{ url_for('song', track_id=s.track, who=who) }}">{{ s.name }}</a>
+            <span class="rank-artist">{{ s.artist }} · {{ s.note }}</span></span>
+          <span class="rank-fig">{{ s.minutes }} min</span></li>{% endfor %}</ol>
+      {% else %}<p class="small empty">No classics this month.</p>{% endif %}</div>
+  </div>
+</section>
+{% endif %}
+
+<!-- Fresh finds -->
+<section class="card">
+  <div class="card-head">
+    <h2>Fresh finds</h2>
+    <p class="small">Artists first heard in the last 30 days: {{ n.finds_count }}, of which <b>{{ n.sticking }}</b> are sticking (played on 3+ days or 15+ times).
+      Plus {{ n.new_songs }} songs from the last fortnight that are new to {{ 'you' if you else 'them' }}.</p>
+  </div>
+  {% if n.finds %}
+  <ol class="ranked">
+    {% for f in n.finds %}
+      <li class="has-art"><span class="rank-num">{{ loop.index }}</span>
+        <img class="rank-art round" alt="" data-art-kind="artist" data-art-track="{{ f.track }}">
+        <span class="rank-text"><a class="rank-name" href="{{ url_for('artist_page', name=f.name, who=who) }}">{{ f.name }}</a>
+          <span class="rank-artist">first {{ f.first }} with “{{ f.first_song }}”{% if f.found == 'found you' %} · it came on by itself{% endif %}</span></span>
+        <span class="rank-fig">{% if f.sticking %}<span class="badge good">sticking</span> {% endif %}{{ f.plays }} plays · {{ f.days }} day{{ 's' if f.days != 1 }}</span></li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="empty small">No new artists this month.</p>{% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% include '_playing_script.html' %}{% include "_entity_scripts.html" %}{% endblock %}

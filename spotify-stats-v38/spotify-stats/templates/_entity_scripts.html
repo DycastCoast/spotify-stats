@@ -1,0 +1,59 @@
+<script>
+  // Shared by the song and artist pages: count-ups, card reveals, toggles, "Show 10".
+  document.querySelectorAll(".tiles [data-count], .highlight [data-count]").forEach(el => motion.countUp(el));
+  motion.reveal(".card, .highlight");
+
+  document.querySelectorAll(".switcher").forEach(card => {
+    const parts = [...card.querySelectorAll("[data-part]")].sort((a, b) => a.dataset.part - b.dataset.part);
+    const value = el => el.tagName === "SELECT" ? el.value : el.querySelector("button.active").dataset.value;
+    const update = () => {
+      const key = parts.map(value).join("-");
+      card.querySelectorAll("[data-key]").forEach(p => {
+        p.toggleAttribute("hidden", p.dataset.key !== key);
+        if (p.dataset.key === key) { p.classList.remove("swap-in"); p.getBoundingClientRect(); p.classList.add("swap-in"); }
+      });
+    };
+    parts.forEach(part => {
+      if (part.tagName === "SELECT") part.addEventListener("change", update);
+      else part.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+        part.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+        update();
+      }));
+    });
+  });
+
+  document.querySelectorAll(".more-btn").forEach(btn => {
+    const total = btn.textContent;
+    btn.addEventListener("click", () => {
+      const wrap = btn.closest(".more-wrap");
+      wrap.classList.toggle("expanded");
+      btn.textContent = wrap.classList.contains("expanded") ? "Show 5" : total;
+    });
+  });
+
+  // "Compare with ...": fetch the panel the first time a friend is picked; click again to hide it.
+  document.querySelectorAll(".vs-bar-row").forEach(row => {
+    const card = document.getElementById("vs-card");
+    let shown = null;
+    row.querySelectorAll(".vs-btn").forEach(btn => btn.addEventListener("click", async () => {
+      row.querySelectorAll(".vs-btn").forEach(b => b.classList.toggle("active", b === btn && shown !== btn.dataset.with));
+      if (shown === btn.dataset.with) { card.hidden = true; shown = null; return; }
+      shown = btn.dataset.with;
+      card.hidden = false;
+      card.innerHTML = '<p class="small">Comparing…</p>';
+      try {
+        const saved = document.querySelector(`template[data-vs="${shown}"]`);   // built into a snapshot
+        if (saved) card.innerHTML = saved.innerHTML;
+        else {
+          const res = await fetch(row.dataset.vsUrl + "&with=" + encodeURIComponent(shown));
+          if (!res.ok) throw new Error(res.status);
+          card.innerHTML = await res.text();
+        }
+        if (window.art) art.lazy(card);
+        card.classList.remove("swap-in"); card.getBoundingClientRect(); card.classList.add("swap-in");
+      } catch (e) {
+        card.innerHTML = '<p class="small">Couldn\'t load the comparison. Try again in a moment.</p>';
+      }
+    }));
+  });
+</script>
