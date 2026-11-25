@@ -9,7 +9,7 @@ import re
 import hmac
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 import spotipy
@@ -904,6 +904,31 @@ def dive_status(sp):
     import artistmeta
     artistmeta.setup()
     return jsonify(artistmeta.status())
+
+
+@app.route("/trivia/dive/preview")
+@login_required
+def dive_preview(sp):
+    """Site owners only: every prompt the data supports right now, with sample answers per tier."""
+    if session["user_id"] not in SITE_OWNERS:
+        abort(404)
+    import dive
+    dive.setup()
+    me = session["user_id"]
+    general = dive.general_prompts(dive.pool_fingerprint()) + dive.song_prompts(dive.group_key())
+    def summary(p):
+        tiers = {}
+        for a in sorted(p["answers"], key=lambda a: -a["weight"]):
+            if not a["hidden"]:
+                tiers.setdefault(dive.TIERS[a["tier"]]["name"], []).append(a["name"])
+        return {"q": p["q"], "pack": p["pack"], "answers": len(p["answers"]),
+                "sample": {t: names[:6] for t, names in tiers.items()}}
+    personal = []
+    for t in dive.PERSONAL + dive.GROUP:
+        p = dive.personal_prompt(t[0], me)
+        personal.append(summary(p) if p else {"q": t[1], "answers": "not enough"})
+    return jsonify({"general": [summary(p) for p in sorted(general, key=lambda p: p["pack"])],
+                    "yours": personal, "today": dive.daily_ids(date.today().isoformat())})
 
 
 @app.route("/trivia/score", methods=["POST"])
