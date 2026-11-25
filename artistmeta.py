@@ -225,11 +225,11 @@ def run_for(seconds, priority=None):
         except lastfm.Unavailable:
             _state["last_error"] = "LASTFM_API_KEY isn't set"
             return did
-        try:
-            worked = musicbrainz_step() or worked
-        except musicbrainz.RateLimited:
-            _state["last_error"] = "MusicBrainz asked us to slow down"
-            time.sleep(30)
+        if not musicbrainz.blocked():                # in a quiet period: skip it, Last.fm carries on
+            try:
+                worked = musicbrainz_step() or worked
+            except musicbrainz.RateLimited:
+                _state["last_error"] = "MusicBrainz asked us to slow down: " + (musicbrainz.last_problem or "")
         if not worked:
             break                                    # nothing left to do for now
         did += 1
@@ -289,6 +289,7 @@ def status():
     out["seed_pages_total"] = CHART_PAGES + len(SEED_TAGS) * TAG_PAGES
     out["running"] = _state["running"]
     out["last_error"] = _state["last_error"]
+    out["musicbrainz_paused"] = musicbrainz.blocked()
     # Rough time left: each artist needs ~one Last.fm call (2.5 s); MusicBrainz runs alongside.
     out["hours_left_estimate"] = round(out["lf_todo"] * lastfm.MIN_GAP / 3600, 1)
     return out

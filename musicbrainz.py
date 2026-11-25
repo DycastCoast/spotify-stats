@@ -15,22 +15,30 @@ import requests
 
 API = "https://musicbrainz.org/ws/2/"
 USER_AGENT = "dycast-stats/1.0 ( https://dycast-stats.montlab.cc )"
-MIN_GAP = 1.2
-BACKOFF = 5 * 60
+MIN_GAP = 1.5
+BACKOFF = 5 * 60            # first pause after a 503; doubles each time in a row, up to MAX_BACKOFF
+MAX_BACKOFF = 60 * 60
 MBID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 LUCENE_SPECIAL = re.compile(r'([+\-&|!(){}\[\]^"~*?:\\/])')
 
 _lock = threading.Lock()
 _last_call = 0.0
 _blocked_until = 0.0
+_strikes = 0                # 503s in a row (reset by any good answer)
+last_problem = None         # what MusicBrainz said last time it refused, for the status page
 
 
 class RateLimited(Exception):
     pass
 
 
+def blocked():
+    """True while we're in a quiet period, so callers can skip MusicBrainz instead of waiting."""
+    return time.monotonic() < _blocked_until
+
+
 def _get(path, timeout=10, max_wait=None, **params):
-    global _last_call, _blocked_until
+    global _last_call, _blocked_until, _strikes, last_problem
     with _lock:
         now = time.monotonic()
         if now < _blocked_until:
@@ -43,9 +51,13 @@ def _get(path, timeout=10, max_wait=None, **params):
         _last_call = time.monotonic()
     resp = requests.get(API + path, params={**params, "fmt": "json"},
                         headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=timeout)
-    if resp.status_code == 503:
-        _blocked_until = time.monotonic() + BACKOFF
+    if resp.status_code in (503, 429):
+        _strikes += 1
+        pause = min(MAX_BACKOFF, BACKOFF * 2 ** (_strikes - 1))
+        _blocked_until = time.monotonic() + pause
+        last_problem = f"HTTP {resp.status_code}, pausing {pause // 60} min: {resp.text[:160]!r}"
         raise RateLimited()
+    _strikes = 0
     if resp.status_code == 404:
         return None
     resp.raise_for_status()
