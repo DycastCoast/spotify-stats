@@ -55,3 +55,5 @@ def start():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     threading.Thread(target=loop, name="scheduler", daemon=True).start()
     log.info("scheduler started: polling every %s minutes", POLL_MINUTES)
+    import artistmeta
+    artistmeta.start()          # Crate Dive's artist lookups (Last.fm + MusicBrainz), its own slow thread

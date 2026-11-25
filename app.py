@@ -895,6 +895,17 @@ def trivia_page(sp):
                            questions=trivia.make_round(me), best=trivia.best(me))
 
 
+@app.route("/trivia/dive/status")
+@login_required
+def dive_status(sp):
+    """Site owners only: how far the Crate Dive artist lookups have got."""
+    if session["user_id"] not in SITE_OWNERS:
+        abort(404)
+    import artistmeta
+    artistmeta.setup()
+    return jsonify(artistmeta.status())
+
+
 @app.route("/trivia/score", methods=["POST"])
 @login_required
 def trivia_score(sp):
