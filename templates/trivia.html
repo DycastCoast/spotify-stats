@@ -5,6 +5,10 @@
   <h1>Trivia</h1>
   <p class="small">Ten questions made fresh from your own history. Questions you've had won't come back for a month.</p>
 </div>
+<nav class="tabs" aria-label="Trivia modes" style="width: fit-content; margin: 0 0 20px">
+  <a href="{{ url_for('trivia_page') }}" class="active" aria-current="page">Quiz</a>
+  <a href="{{ url_for('dive_page') }}">Crate Dive</a>
+</nav>
 
 {% if not questions %}
 <section class="card"><p class="empty">Not enough listening yet to make a quiz. Come back once there's more history.</p></section>

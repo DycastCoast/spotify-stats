@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Crate Dive · Trivia · Listening Stats{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='dive.css', v=dive_v) }}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap">
+<div class="page-head">
+  <h1>Trivia</h1>
+  <p class="small">Crate Dive: seven prompts, any right answer counts, obscure ones dig deeper.</p>
+</div>
+<nav class="tabs" aria-label="Trivia modes" style="width: fit-content; margin: 0 0 20px">
+  <a href="{{ url_for('trivia_page') }}">Quiz</a>
+  <a href="{{ url_for('dive_page') }}" class="active" aria-current="page">Crate Dive</a>
+</nav>
+
+<div class="cd" id="cd" data-csrf="{{ csrf }}">
+<div class="cd-layout">
+<div class="cd-main">
+
+  <!-- ============ START ============ -->
+  <section id="cd-start" class="cd-screen">
+    <div class="cd-hero cd-rise">
+      <span class="cd-kicker" id="cd-today"></span>
+      <h2>Name the answer nobody else has.</h2>
+      <p>Everyone says Oasis. Say Durutti Column. The rarer your answer, the further back in the crate it's filed: every point is one record deeper.</p>
+    </div>
+    <div class="cd-cards">
+      <div class="cd-card">
+        <span class="cd-label">Daily dive</span>
+        <div id="cd-daily"></div>
+      </div>
+      <div class="cd-card">
+        <span class="cd-label">Timer</span>
+        <div class="cd-chips" id="cd-timer" role="group" aria-label="Timer"></div>
+        <span class="cd-muted" id="cd-timer-note"></span>
+      </div>
+    </div>
+    <div class="cd-card">
+      <span class="cd-label">Unlimited</span>
+      <span class="cd-muted">Fresh random dives. Pick a crate or mix everything. Prompts you've had recently are skipped.</span>
+      <div class="cd-chips" id="cd-packs" role="group" aria-label="Which crate"></div>
+      <div><button type="button" class="cd-btn" id="cd-start-unl">Start an unlimited dive</button></div>
+    </div>
+    <div class="cd-card" id="cd-archive" hidden>
+      <span class="cd-label">Archive</span>
+      <span class="cd-muted">Replay an earlier day's daily. Counts in your stats, not your streak.</span>
+      <div class="cd-row"><label for="cd-arc-day" class="cd-muted">Day</label><select id="cd-arc-day"></select>
+        <button type="button" class="cd-btn cd-ghost" id="cd-start-arc">Dive that day</button></div>
+    </div>
+    <div class="cd-card">
+      <span class="cd-label">Your record</span>
+      <div class="cd-stats" id="cd-stats"></div>
+    </div>
+    <div class="cd-card">
+      <span class="cd-label">How the crate is filed</span>
+      <span class="cd-muted">Each prompt's answers are ranked against each other by Last.fm listeners (or, for your own prompts, by how much you play them). The most familiar 20% are at the front; the least familiar 7% are at the very back.</span>
+      <div class="cd-legend" id="cd-legend"></div>
+    </div>
+    <div class="cd-card" id="cd-claims" hidden>
+      <div class="cd-split"><span class="cd-label">Trust Me Bro answers</span><button type="button" class="cd-btn cd-ghost" id="cd-copy-claims">Copy the list</button></div>
+      <span class="cd-muted">Answers people counted on their word. Paste the list to Claude to get the real ones added.</span>
+      <div id="cd-claims-list" class="cd-claims-list"></div>
+      <span class="cd-muted" id="cd-claims-copied" role="status"></span>
+    </div>
+  </section>
+
+  <!-- ============ PLAY ============ -->
+  <section id="cd-play" class="cd-screen" hidden>
+    <div class="cd-topline"><span id="cd-mode"></span><span id="cd-count"></span><span><span id="cd-pts">0</span> pts</span>
+      <button type="button" class="cd-mute" id="cd-mute" aria-pressed="false"></button></div>
+    <div class="cd-pips" id="cd-pips"></div>
+    <div class="cd-prompt">
+      <div class="cd-prompt-top">
+        <div class="cd-prompt-text">
+          <span class="cd-kicker" id="cd-pack"></span>
+          <h2 id="cd-q"></h2>
+          <span class="cd-note" id="cd-note"></span>
+        </div>
+        <div class="cd-clock" id="cd-clock" aria-hidden="true"></div>
+      </div>
+      <div class="cd-clockbar" id="cd-clockbar"><i></i></div>
+    </div>
+
+    <div class="cd-crate" id="cd-crate" aria-hidden="true">
+      <div class="cd-light"></div>
+      <div class="cd-glow" id="cd-glow"></div>
+      <div class="cd-dust" id="cd-dust"></div>
+      <div class="cd-status"><span id="cd-status"></span><span class="cd-mono" id="cd-flips"></span></div>
+      <div class="cd-well"></div>
+      <div class="cd-sleeves" id="cd-sleeves"></div>
+      <div class="cd-front" id="cd-front"><b id="cd-crate-no"></b><span>CRATE DIVE</span></div>
+      <div class="cd-fade"></div>
+    </div>
+    <p class="cd-sr" id="cd-sr" aria-live="polite"></p>
+
+    <div class="cd-strip" id="cd-strip"></div>
+    <div id="cd-special"></div>
+
+    <div id="cd-answer">
+      <div class="cd-row cd-inputrow" id="cd-inputrow">
+        <label for="cd-guess" class="cd-sr">Your answer</label>
+        <input id="cd-guess" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type an answer" maxlength="120">
+        <button type="button" class="cd-btn" id="cd-dig">Dig</button>
+      </div>
+      <div class="cd-split cd-fbrow">
+        <div class="cd-row"><span class="cd-fb" id="cd-fb" role="status"></span>
+          <button type="button" class="cd-btn cd-claim" id="cd-claim" hidden>Trust Me Bro (30)</button></div>
+        <button type="button" class="cd-link" id="cd-pass">Pass</button>
+      </div>
+    </div>
+
+    <div class="cd-card cd-reveal" id="cd-reveal" hidden>
+      <div class="cd-split"><span class="cd-tiername" id="cd-r-tier"></span><span class="cd-muted" id="cd-r-gain"></span></div>
+      <span id="cd-r-rare"></span>
+      <dl class="cd-kv" id="cd-r-kv"></dl>
+      <div class="cd-check">
+        <label for="cd-check-in" class="cd-label">Would it have counted?</label>
+        <div class="cd-row"><input id="cd-check-in" type="text" autocomplete="off" spellcheck="false" placeholder="Search this crate, e.g. the one you nearly said" maxlength="120">
+          <button type="button" class="cd-btn cd-ghost" id="cd-check-go">Check</button></div>
+        <div id="cd-check-out"></div>
+      </div>
+      <div class="cd-row"><button type="button" class="cd-btn" id="cd-next">Keep digging</button></div>
+    </div>
+  </section>
+
+  <!-- ============ END ============ -->
+  <section id="cd-end" class="cd-screen" hidden>
+    <div class="cd-endhero cd-rise" id="cd-endhero">
+      <span class="cd-kicker" id="cd-e-mode"></span>
+      <span class="cd-big"><span id="cd-e-depth">0</span> records deep</span>
+      <span class="cd-e-sub" id="cd-e-sub"></span>
+    </div>
+    <div class="cd-wall" id="cd-wall"></div>
+    <div class="cd-card" id="cd-vs" hidden></div>
+    <div class="cd-card">
+      <label for="cd-search-in" class="cd-label">Search the crates</label>
+      <span class="cd-muted">Check an answer you thought of afterwards. Pick a prompt, then search.</span>
+      <div class="cd-chips" id="cd-search-picks"></div>
+      <div class="cd-row"><input id="cd-search-in" type="text" autocomplete="off" spellcheck="false" placeholder="Search an answer" maxlength="120">
+        <button type="button" class="cd-btn cd-ghost" id="cd-search-go">Check</button></div>
+      <div id="cd-search-out"></div>
+    </div>
+    <div class="cd-card">
+      <span class="cd-label">Share</span>
+      <pre class="cd-share" id="cd-share"></pre>
+      <div class="cd-row"><button type="button" class="cd-btn cd-ghost" id="cd-copy">Copy</button><span class="cd-muted" id="cd-copied" role="status"></span></div>
+    </div>
+    <div class="cd-row"><button type="button" class="cd-btn" id="cd-again">Dig again</button><button type="button" class="cd-btn cd-ghost" id="cd-home">Back to the shop</button></div>
+  </section>
+</div>
+
+<!-- ============ DEPTH RAIL: a record shop cut away into floors ============ -->
+<aside class="cd-rail" aria-label="How deep you've dug">
+  <div class="cd-readout"><b id="cd-rail-n">0</b><span>records deep · <span id="cd-rail-z">the Shop Floor</span></span></div>
+  <div class="cd-shop">
+    <svg viewBox="0 0 200 440" role="img" aria-label="A record shop cut away into floors: shop floor, back racks, basement, storage unit and the vault">
+      <rect class="cd-band" data-z="0" x="0" y="0" width="200" height="88"></rect><rect class="cd-band" data-z="1" x="0" y="88" width="200" height="88"></rect><rect class="cd-band" data-z="2" x="0" y="176" width="200" height="88"></rect><rect class="cd-band" data-z="3" x="0" y="264" width="200" height="88"></rect><rect class="cd-band" data-z="4" x="0" y="352" width="200" height="88"></rect>
+      <g class="cd-floor" data-z="0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 82h172"></path><rect x="24" y="34" width="148" height="48"></rect><path d="M20 34h156l-6-10H26z"></path>
+        <path d="M26 34q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0q6 7 12 0"></path>
+        <rect x="34" y="46" width="78" height="30"></rect><circle cx="50" cy="61" r="9"></circle><circle cx="50" cy="61" r="2"></circle><circle cx="73" cy="61" r="9"></circle><circle cx="73" cy="61" r="2"></circle><circle cx="96" cy="61" r="9"></circle><circle cx="96" cy="61" r="2"></circle>
+        <rect x="124" y="46" width="38" height="36"></rect><circle cx="155" cy="66" r="1.5"></circle><rect x="128" y="50" width="20" height="9" rx="2"></rect>
+        <text x="138" y="57" font-size="5.5" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">OPEN</text>
+        <text x="98" y="18" font-size="9" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle" letter-spacing="2">RECORDS</text>
+      </g>
+      <rect x="0" y="84" width="200" height="6" fill="#222"></rect>
+      <g class="cd-floor" data-z="1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 170h184"></path>
+        <rect x="14" y="146" width="50" height="24"></rect><path d="M20 146v-16M26 146v-19M32 146v-15M38 146v-18M44 146v-17M50 146v-20M56 146v-14"></path>
+        <rect x="74" y="146" width="50" height="24"></rect><path d="M80 146v-18M86 146v-15M92 146v-20M98 146v-16M104 146v-19M110 146v-14M116 146v-17"></path>
+        <rect x="134" y="146" width="50" height="24"></rect><path d="M140 146v-15M146 146v-19M152 146v-16M158 146v-20M164 146v-14M170 146v-18M176 146v-16"></path>
+        <rect x="30" y="104" width="28" height="22"></rect><rect x="140" y="104" width="34" height="20"></rect><path d="M146 110h22M146 116h14"></path>
+        <text x="8" y="100" font-size="8" font-weight="700" fill="currentColor" stroke="none" letter-spacing="1">BACK RACKS</text>
+      </g>
+      <rect x="0" y="172" width="200" height="6" fill="#222"></rect>
+      <g class="cd-floor" data-z="2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 258h184"></path><path d="M10 182h18v14h14v14h14v14h14v14h14v20"></path><path d="M10 182l78 76"></path>
+        <path d="M150 178v16"></path><path d="M144 194h12l-2 8h-8z"></path>
+        <rect x="116" y="234" width="34" height="24"></rect><rect x="152" y="234" width="34" height="24"></rect><rect x="134" y="212" width="34" height="22"></rect>
+        <circle class="cd-bulb" cx="150" cy="206" r="16" fill="currentColor" stroke="none"></circle><circle cx="150" cy="206" r="4" fill="currentColor" stroke="none"></circle>
+        <text x="96" y="190" font-size="8" font-weight="700" fill="currentColor" stroke="none" letter-spacing="1">THE BASEMENT</text>
+      </g>
+      <rect x="0" y="260" width="200" height="6" fill="#222"></rect>
+      <g class="cd-floor" data-z="3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 346h184"></path><rect x="46" y="282" width="108" height="64"></rect><path d="M46 290h108M46 298h108M46 306h108M46 314h108M46 322h108M46 330h108M46 338h108"></path>
+        <rect x="12" y="318" width="26" height="28"></rect><rect x="16" y="296" width="20" height="22"></rect><rect x="162" y="322" width="28" height="24"></rect>
+        <text x="100" y="278" font-size="6" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">UNIT 7</text>
+        <text x="8" y="276" font-size="8" font-weight="700" fill="currentColor" stroke="none" letter-spacing="1">STORAGE</text>
+      </g>
+      <rect x="0" y="348" width="200" height="6" fill="#222"></rect>
+      <circle class="cd-vaultglow" cx="100" cy="398" r="44"></circle>
+      <g class="cd-floor" data-z="4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="48" y="360" width="104" height="76" rx="4"></rect><circle cx="100" cy="398" r="30"></circle><circle cx="100" cy="398" r="21"></circle><circle cx="100" cy="398" r="5"></circle>
+        <path d="M100 377v-8M100 427v-8M79 398h-8M129 398h-8M85 383l-6-6M115 413l6 6M115 383l6-6M85 413l-6 6"></path><rect x="40" y="380" width="8" height="10"></rect><rect x="40" y="406" width="8" height="10"></rect>
+        <text x="8" y="368" font-size="8" font-weight="700" fill="currentColor" stroke="none" letter-spacing="1">THE VAULT</text>
+      </g>
+    </svg>
+    <div class="cd-marker" id="cd-marker"><i></i>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9.5" fill="#000" stroke="#C6F432" stroke-width="1.2"></circle><circle cx="10" cy="10" r="3.5" fill="#C6F432"></circle></svg></div>
+  </div>
+  <span class="cd-credit">Listener counts: Last.fm (powered by AudioScrobbler). Artist facts: MusicBrainz.</span>
+</aside>
+</div>
+</div>
+<script id="cd-boot" type="application/json">{{ boot | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='dive.js', v=dive_v) }}"></script>
+{% endblock %}

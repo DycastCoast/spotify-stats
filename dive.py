@@ -625,3 +625,100 @@ def preview(user_id=None):
 
 if __name__ == "__main__":
     preview(sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--preview" else None)
+
+
+# ------------------------------------------------------------------ results, stats, the leaderboard
+VALID_TIERS = set(TIERS)
+MODES = {"daily", "unlimited", "archive"}
+
+
+def record(user_id, mode, day, ids, tiers, answers, timer):
+    """Save a finished dive. Points are worked out here from the tiers, not trusted from the page.
+    Only your FIRST go at a daily counts (replaying it just shows that first result)."""
+    if mode not in MODES or len(ids) != len(tiers) or len(ids) > 7 or any(t not in VALID_TIERS for t in tiers):
+        raise ValueError("bad dive")
+    answers = [str(a or "")[:120] for a in answers]
+    points = sum(TIERS[t]["pts"] for t in tiers)
+    with connect() as conn:
+        if mode == "daily":
+            row = conn.execute("SELECT * FROM dive_results WHERE user_id = ? AND mode = 'daily' AND day = ?", (user_id, day)).fetchone()
+            if row:
+                return _row(row), False
+        conn.execute(
+            "INSERT INTO dive_results (user_id, mode, day, ids, tiers, answers, points, timer, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, mode, day, json.dumps(ids), json.dumps(tiers), json.dumps(answers), points, int(timer), time.time()))
+    return {"points": points, "tiers": tiers, "answers": answers, "ids": ids, "timer": int(timer), "day": day, "mode": mode}, True
+
+
+def _row(r):
+    return {"points": r["points"], "tiers": json.loads(r["tiers"]), "answers": json.loads(r["answers"]),
+            "ids": json.loads(r["ids"]), "timer": r["timer"], "day": r["day"], "mode": r["mode"]}
+
+
+def daily_result(user_id, day):
+    with connect() as conn:
+        r = conn.execute("SELECT * FROM dive_results WHERE user_id = ? AND mode = 'daily' AND day = ?", (user_id, day)).fetchone()
+    return _row(r) if r else None
+
+
+def my_stats(user_id):
+    with connect() as conn:
+        r = conn.execute("SELECT COUNT(*) AS n, MAX(points) AS best, AVG(points) AS avg FROM dive_results WHERE user_id = ?",
+                         (user_id,)).fetchone()
+        days = {x["day"] for x in conn.execute("SELECT day FROM dive_results WHERE user_id = ? AND mode = 'daily'", (user_id,))}
+    streak, d = 0, date.today()
+    if d.isoformat() not in days:
+        d -= timedelta(days=1)                  # today not played yet: the streak runs to yesterday
+    while d.isoformat() in days:
+        streak += 1
+        d -= timedelta(days=1)
+    return {"dives": r["n"] or 0, "best": r["best"] or 0, "avg": round(r["avg"] or 0), "streak": streak}
+
+
+def versus(user_id, day):
+    """You vs your best friend on a daily: both answers per prompt (only once you've both played)."""
+    friend, friend_name = best_friend(user_id)
+    mine = daily_result(user_id, day)
+    theirs = daily_result(friend, day) if friend else None
+    if not friend:
+        return None
+    out = {"friend": friend_name, "played": bool(theirs)}
+    if mine and theirs:
+        out["points"] = theirs["points"]
+        out["timer"] = theirs["timer"]
+        out["rows"] = [{"tier": t, "answer": a} for t, a in zip(theirs["tiers"], theirs["answers"])]
+    return out
+
+
+def save_claim(user_id, pid, q, answer):
+    with connect() as conn:
+        conn.execute("INSERT INTO dive_claims (user_id, prompt_id, q, answer, at) VALUES (?, ?, ?, ?, ?)",
+                     (user_id, pid, q[:200], answer[:120], time.time()))
+
+
+def claims(limit=200):
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT c.answer, c.q, c.at, COALESCE(u.display_name, c.user_id) AS who FROM dive_claims c "
+            "LEFT JOIN users u ON u.id = c.user_id ORDER BY c.at DESC LIMIT ?", (limit,))]
+
+
+def past_days(limit=60):
+    with connect() as conn:
+        return [r["day"] for r in conn.execute("SELECT day FROM dive_daily WHERE day < ? ORDER BY day DESC LIMIT ?",
+                                               (date.today().isoformat(), limit))]
+
+
+PACKS = [("all", "Everything"), ("genres", "Genres"), ("places", "Places"), ("eras", "Eras"), ("names", "Names"),
+         ("charts", "Listener counts"), ("songs", "Song titles"), ("you", "Your listening"), ("group", "You & a friend")]
+
+
+def public(p):
+    """What the page needs to show a prompt (not the answers)."""
+    return {"id": p["id"], "q": p["q"], "pack": dict(PACKS).get(p["pack"], p["pack"]), "note": p["note"],
+            "count": sum(1 for a in p["answers"] if not a.get("boot"))}
+
+
+def answer_out(p, a, typed):
+    return {"name": a["name"], "detail": a.get("detail"), "tier": a["tier"], "pts": TIERS[a["tier"]]["pts"],
+            "typed": typed, "reveal": reveal(p, a)}

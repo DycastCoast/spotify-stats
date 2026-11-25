@@ -895,6 +895,149 @@ def trivia_page(sp):
                            questions=trivia.make_round(me), best=trivia.best(me))
 
 
+# ---------------------------------------------------------- Crate Dive (Trivia's second tab)
+# The page does the animation; every answer is checked here, against data the page never sees.
+import dive
+
+_guess_times = {}                    # user -> recent guess times (a gentle limit: 8 guesses per 4 s)
+
+
+def _dive_api():
+    """Shared checks for the Crate Dive JSON calls: logged in, same-site token, sane body."""
+    if "user_id" not in session:
+        abort(401)
+    if request.headers.get("X-CSRF") != session.get("csrf"):
+        abort(400)
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400)
+    return session["user_id"], body
+
+
+def _dive_prompt(me, body):
+    pid = str(body.get("pid", ""))[:60]
+    p = dive.prompt(pid, me)
+    if p is None:
+        abort(404)
+    return p
+
+
+@app.route("/trivia/dive")
+@login_required
+def dive_page(sp):
+    """Crate Dive: name the answer nobody else thinks of."""
+    me = session["user_id"]
+    dive.setup()
+    today = date.today().isoformat()
+    try:
+        css_v = int(os.path.getmtime(os.path.join(app.static_folder, "dive.css")) + os.path.getmtime(os.path.join(app.static_folder, "dive.js")))
+    except OSError:
+        css_v = 0
+    friend, friend_name = dive.best_friend(me)
+    boot = {"today": today, "done": dive.daily_result(me, today), "stats": dive.my_stats(me),
+            "packs": dive.PACKS, "friend": friend_name, "pastDays": dive.past_days(),
+            "tiers": dive.TIERS, "timeLimit": dive.TIME_LIMIT,
+            "claims": dive.claims() if me in SITE_OWNERS else None}
+    return render_template("dive.html", user=sp.current_user(), boot=boot, dive_v=css_v)
+
+
+@app.route("/trivia/dive/api/start", methods=["POST"])
+def dive_start():
+    me, body = _dive_api()
+    mode = body.get("mode")
+    today = date.today().isoformat()
+    if mode == "daily":
+        day = today
+        ids = dive.daily_ids(day)
+    elif mode == "archive":
+        day = str(body.get("day", ""))
+        if day not in dive.past_days(365):
+            abort(400)
+        ids = dive.daily_ids(day)
+    elif mode == "unlimited":
+        day = None
+        pack = body.get("pack") if body.get("pack") in dict(dive.PACKS) else "all"
+        ids = dive.unlimited_ids(me, pack)
+    else:
+        abort(400)
+    prompts = dive.resolve(ids, me, "crate-dive|" + (day or "u"))
+    return jsonify({"mode": mode, "day": day, "prompts": [dive.public(p) for p in prompts]})
+
+
+@app.route("/trivia/dive/api/guess", methods=["POST"])
+def dive_guess():
+    me, body = _dive_api()
+    now = time.time()
+    recent = [t for t in _guess_times.get(me, []) if now - t < 4]
+    if len(recent) >= 8:
+        return jsonify({"ok": False, "reason": "slow"}), 429
+    _guess_times[me] = recent + [now]
+    p = _dive_prompt(me, body)
+    text = str(body.get("text", ""))[:120].strip()
+    m = dive.match(p, text, dive.known_names(dive.pool_fingerprint(), dive.group_key()))
+    if not m["ok"]:
+        return jsonify({"ok": False, "reason": m["reason"]})
+    return jsonify({"ok": True, **dive.answer_out(p, m["answer"], text)})
+
+
+@app.route("/trivia/dive/api/reveal", methods=["POST"])
+def dive_reveal():
+    """For a pass, Dead Air or Trust Me Bro: what you could have said."""
+    me, body = _dive_api()
+    return jsonify(dive.reveal(_dive_prompt(me, body)))
+
+
+@app.route("/trivia/dive/api/search", methods=["POST"])
+def dive_search():
+    me, body = _dive_api()
+    p = _dive_prompt(me, body)
+    text = str(body.get("text", ""))[:120]
+    hits = dive.search(p, text)
+    known = dive.known_names(dive.pool_fingerprint(), dive.group_key())
+    real = not hits and dive.norm(text) in known.get(p["space"], (set(), {}))[0]
+    return jsonify({"hits": [{"name": a["name"], "detail": a.get("detail"), "tier": a["tier"],
+                              "pts": dive.TIERS[a["tier"]]["pts"]} for a in hits],
+                    "known": real})
+
+
+@app.route("/trivia/dive/api/claim", methods=["POST"])
+def dive_claim():
+    me, body = _dive_api()
+    p = _dive_prompt(me, body)
+    text = str(body.get("text", ""))[:120].strip()
+    if text:
+        dive.save_claim(me, p["id"], p["q"], text)
+    return jsonify({"ok": True, "reveal": dive.reveal(p)})
+
+
+@app.route("/trivia/dive/api/finish", methods=["POST"])
+def dive_finish():
+    me, body = _dive_api()
+    mode = body.get("mode")
+    day = date.today().isoformat() if mode == "daily" else (str(body.get("day")) if mode == "archive" else None)
+    ids = [str(i)[:60] for i in (body.get("ids") or [])]
+    try:
+        res, new = dive.record(me, mode, day, ids, list(body.get("tiers") or []), list(body.get("answers") or []),
+                               int(body.get("timer") or 0))
+    except (ValueError, TypeError):
+        abort(400)
+    return jsonify({"result": res, "first": new, "stats": dive.my_stats(me),
+                    "versus": dive.versus(me, day) if mode == "daily" else None})
+
+
+@app.route("/trivia/dive/api/daily", methods=["POST"])
+def dive_daily():
+    """Today's finished daily again (the "See today's dive" button), with the prompts' wording."""
+    me, body = _dive_api()
+    day = date.today().isoformat()
+    res = dive.daily_result(me, day)
+    if not res:
+        abort(404)
+    prompts = dive.resolve(res["ids"], me, "crate-dive|" + day)
+    return jsonify({"result": res, "prompts": [dive.public(p) for p in prompts], "stats": dive.my_stats(me),
+                    "versus": dive.versus(me, day)})
+
+
 @app.route("/trivia/dive/status")
 @login_required
 def dive_status(sp):

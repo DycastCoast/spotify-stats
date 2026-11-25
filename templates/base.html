@@ -44,7 +44,7 @@
                  ("overview", "Overview", "Totals, top lists, when and how you listen"),
                  ("journey_page", "Journey", "Your eras and how your taste changed"),
                  ("playlists_page", "Playlists", "Made from how you listen: moods, friends, more like this"),
-                 ("trivia_page", "Trivia", "Do you know you? 10 questions from your own history"),
+                 ("trivia_page", "Trivia", "Quiz yourself, or Crate Dive: name the answer nobody else has"),
                  ("skips_page", "Skips", "What you skip, when, and burnout"),
                  ("on_this_day", "On this day", "Today in earlier years"),
                  ("trips_page", "Trips", "Your listening abroad (only you can see it)")]),
@@ -54,13 +54,14 @@
                      ("import_page", "Import your history", "Upload your full Spotify history export")]),
       ] %}
       <nav class="navgroups" aria-label="Pages">
+        {% set ep = "trivia_page" if request.endpoint == "dive_page" else request.endpoint %}
         {% for title, pages in groups %}
-          {% set current = pages | selectattr(0, "equalto", request.endpoint) | list %}
+          {% set current = pages | selectattr(0, "equalto", ep) | list %}
           <details class="navgroup {{ 'active' if current }}">
             <summary>{{ title }}{% if current %}<span class="nav-current"> · {{ current[0][1] }}</span>{% endif %}</summary>
             <div class="navpanel">
               {% for endpoint, label, about in pages %}
-                <a href="{{ url_for(endpoint) }}" class="{{ 'active' if request.endpoint == endpoint }}">
+                <a href="{{ url_for(endpoint) }}" class="{{ 'active' if ep == endpoint }}">
                   <b>{{ label }}</b><small>{{ about }}</small></a>
               {% endfor %}
             </div>
